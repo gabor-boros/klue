@@ -1,0 +1,81 @@
+site_name: klue
+site_url: https://gabor-boros.github.io/klue/
+repo_url: https://github.com/gabor-boros/klue
+repo_name: gabor-boros/klue
+copyright: Copyright &copy; gabor-boros
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: blue
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: blue
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - search.suggest
+    - search.highlight
+    - toc.follow
+
+plugins:
+  - search
+  - tags
+  - meta
+  - git-revision-date-localized:
+      enable_creation_date: true
+      type: date
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.smartsymbols
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+nav:
+  - Home: index.md
+  - Tags: tags.md
+  - Getting started:
+      - Installation: getting-started/installation.md
+      - Kubernetes access: getting-started/kubernetes-access.md
+  - Usage:
+      - Commands: usage/commands.md
+      - Flags: usage/flags.md
+      - why: usage/why.md
+  - Development:
+      - Overview: development/index.md
+      - Releasing: development/releasing.md

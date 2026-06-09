@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  GIT_CLIFF_VERSION: "2.12.0"
+
+jobs:
+  goreleaser:
+    name: GoReleaser
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+      - name: Install git-cliff
+        run: |
+          set -euo pipefail
+          arch="$(uname -m)"
+          case "${arch}" in
+            x86_64) arch="x86_64" ;;
+            aarch64|arm64) arch="aarch64" ;;
+            *) echo "unsupported architecture: ${arch}" >&2; exit 1 ;;
+          esac
+          archive="git-cliff-${GIT_CLIFF_VERSION}-${arch}-unknown-linux-gnu.tar.gz"
+          url="https://github.com/orhun/git-cliff/releases/download/v${GIT_CLIFF_VERSION}/${archive}"
+          curl -fsSL "${url}" -o /tmp/git-cliff.tar.gz
+          tar -xzf /tmp/git-cliff.tar.gz -C /tmp
+          install "/tmp/git-cliff-${GIT_CLIFF_VERSION}/git-cliff" /usr/local/bin/git-cliff
+          git-cliff --version
+      - name: Generate release notes
+        run: |
+          set -euo pipefail
+          git cliff --config cliff.toml --current --strip header -o /tmp/release-notes.md
+          echo "Release notes:"
+          cat /tmp/release-notes.md
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean --release-notes=/tmp/release-notes.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,6 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: klue-demo-certmanager-failed
+  labels:
+    app.kubernetes.io/part-of: klue-examples

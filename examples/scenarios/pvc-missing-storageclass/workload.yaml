@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: missing-sc-demo
+  namespace: klue-demo-pvc-sc
+  labels:
+    app.kubernetes.io/part-of: klue-examples
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: does-not-exist-sc

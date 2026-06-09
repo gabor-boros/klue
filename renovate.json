@@ -1,0 +1,107 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":semanticCommits",
+    ":dependencyDashboard"
+  ],
+  "labels": ["dependencies"],
+  "prConcurrentLimit": 5,
+  "packageRules": [
+    {
+      "description": "Group Kubernetes client libraries",
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["k8s.io/**", "sigs.k8s.io/**"],
+      "groupName": "kubernetes monorepo"
+    },
+    {
+      "description": "Group golang.org/x modules",
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["golang.org/x/**"],
+      "groupName": "golang.org/x"
+    },
+    {
+      "description": "Group GitHub Actions updates weekly",
+      "matchManagers": ["github-actions"],
+      "groupName": "github-actions",
+      "schedule": ["before 6am on monday"]
+    },
+    {
+      "description": "Group Python docs dependencies",
+      "matchManagers": ["pip_requirements"],
+      "groupName": "python-docs"
+    },
+    {
+      "description": "Keep golangci-lint pins in sync",
+      "matchPackageNames": ["golangci/golangci-lint"],
+      "groupName": "golangci-lint"
+    },
+    {
+      "description": "Keep git-cliff pins in sync",
+      "matchPackageNames": ["orhun/git-cliff"],
+      "groupName": "git-cliff"
+    },
+    {
+      "description": "Keep goreleaser pins in sync",
+      "matchPackageNames": ["goreleaser/goreleaser"],
+      "groupName": "goreleaser"
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "golangci-lint version in Makefile",
+      "managerFilePatterns": ["/^Makefile$/"],
+      "matchStrings": [
+        "GOLANGCI_LINT_VERSION\\s*\\??=\\s*v(?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "golangci/golangci-lint",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "description": "golangci-lint version in GitHub Actions workflows",
+      "managerFilePatterns": ["/^\\.github/workflows/.*\\.ya?ml$/"],
+      "matchStrings": [
+        "uses:\\s+golangci/golangci-lint-action@v\\d+[\\s\\S]*?version:\\s*v(?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "golangci/golangci-lint",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "description": "goreleaser version in Makefile",
+      "managerFilePatterns": ["/^Makefile$/"],
+      "matchStrings": [
+        "GORELEASER_VERSION\\s*\\??=\\s*v(?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "goreleaser/goreleaser",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "description": "git-cliff version in Makefile",
+      "managerFilePatterns": ["/^Makefile$/"],
+      "matchStrings": [
+        "GIT_CLIFF_VERSION\\s*\\??=\\s*(?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "orhun/git-cliff",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "description": "git-cliff version in GitHub Actions workflows",
+      "managerFilePatterns": ["/^\\.github/workflows/.*\\.ya?ml$/"],
+      "matchStrings": [
+        "GIT_CLIFF_VERSION:\\s*[\"']?(?<currentValue>\\d+\\.\\d+\\.\\d+)[\"']?"
+      ],
+      "depNameTemplate": "orhun/git-cliff",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "semver"
+    }
+  ]
+}

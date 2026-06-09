@@ -1,0 +1,61 @@
+name: Feature request
+description: Suggest a new diagnostic rule or capability
+title: "[feat]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the problem you want klue to help solve. Feature requests for new diagnostic rules are especially welcome.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What Kubernetes failure mode is hard to troubleshoot today?
+      placeholder: "When a Service has no endpoints because of a selector mismatch, kubectl only shows the symptom..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed behavior
+      description: How should `klue why` explain or surface this issue?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: resource-scope
+    attributes:
+      label: Resource scope
+      description: Which Kubernetes resources should this apply to?
+      multiple: true
+      options:
+        - Pod
+        - Deployment
+        - Service
+        - Ingress
+        - PVC / PV
+        - RBAC
+        - HPA / PDB
+        - Job / CronJob
+        - Custom resources
+        - Cluster-scoped (Node, StorageClass, etc.)
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: example
+    attributes:
+      label: Example scenario
+      description: A minimal cluster state or manifest that illustrates the problem
+      render: yaml
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other tools or workflows you have tried

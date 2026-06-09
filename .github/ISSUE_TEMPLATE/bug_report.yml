@@ -1,0 +1,92 @@
+name: Bug report
+description: Report incorrect or missing diagnostics from klue
+title: "[bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Include as much detail as you can so we can reproduce the issue.
+
+  - type: input
+    id: klue-version
+    attributes:
+      label: klue version
+      description: Output of `klue version`
+      placeholder: "klue version v0.1.0 (commit abc1234, built 2026-06-10)"
+    validations:
+      required: true
+
+  - type: input
+    id: k8s-version
+    attributes:
+      label: Kubernetes version
+      description: Output of `kubectl version` or your cluster version
+      placeholder: "v1.32.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: resource-kind
+    attributes:
+      label: Resource kind
+      description: The Kubernetes resource you ran `klue why` against
+      options:
+        - Pod
+        - Deployment
+        - Service
+        - Ingress
+        - PVC
+        - Certificate (cert-manager)
+        - Custom resource
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: resource-name
+    attributes:
+      label: Resource name and namespace
+      placeholder: "my-pod in namespace default"
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Command run
+      description: The exact `klue why ...` command you executed
+      placeholder: "klue why pod my-pod -n default"
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual-output
+    attributes:
+      label: Actual output
+      description: Paste the full output from klue
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-output
+    attributes:
+      label: Expected behavior
+      description: What you expected klue to report or diagnose
+    validations:
+      required: true
+
+  - type: textarea
+    id: manifests
+    attributes:
+      label: Relevant manifests
+      description: Redact secrets. YAML snippets or a link to a minimal repro helps a lot.
+      render: yaml
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Operator versions, cloud provider, CNI, or anything else relevant

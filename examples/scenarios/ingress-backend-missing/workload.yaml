@@ -1,0 +1,13 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: backend-missing-demo
+  namespace: klue-demo-ingress-backend
+  labels:
+    app.kubernetes.io/part-of: klue-examples
+spec:
+  defaultBackend:
+    service:
+      name: ghost-service
+      port:
+        number: 80

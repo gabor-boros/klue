@@ -1,0 +1,94 @@
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: letsencrypt-staging-broken
+  namespace: klue-demo-certmanager-failed
+  labels:
+    app.kubernetes.io/part-of: klue-examples
+spec:
+  acme:
+    # Realistic ACME setup, but intentionally broken by missing DNS API token secret.
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: dev@example.com
+    privateKeySecretRef:
+      name: letsencrypt-staging-account-key
+    solvers:
+      - dns01:
+          cloudflare:
+            apiTokenSecretRef:
+              name: missing-cloudflare-token
+              key: api-token
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: backend-demo-cert
+  namespace: klue-demo-certmanager-failed
+  labels:
+    app.kubernetes.io/part-of: klue-examples
+spec:
+  secretName: backend-demo-tls
+  commonName: backend.demo.internal
+  dnsNames:
+    - backend.demo.internal
+  issuerRef:
+    kind: Issuer
+    name: letsencrypt-staging-broken
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: backend-demo
+  namespace: klue-demo-certmanager-failed
+  labels:
+    app.kubernetes.io/part-of: klue-examples
+    app: backend
+spec:
+  containers:
+    - name: app
+      image: busybox:1.36
+      command:
+        - sh
+        - -c
+        - sleep 3600
+      ports:
+        - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-demo
+  namespace: klue-demo-certmanager-failed
+  labels:
+    app.kubernetes.io/part-of: klue-examples
+spec:
+  selector:
+    app: backend
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: backend-demo
+  namespace: klue-demo-certmanager-failed
+  labels:
+    app.kubernetes.io/part-of: klue-examples
+spec:
+  tls:
+    - hosts:
+        - backend.demo.internal
+      secretName: backend-demo-tls
+  rules:
+    - host: backend.demo.internal
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: backend-demo
+                port:
+                  number: 80
