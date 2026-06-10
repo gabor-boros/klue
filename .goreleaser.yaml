@@ -71,10 +71,3 @@ homebrew_casks:
     homepage: "https://github.com/gabor-boros/klue"
     description: "Kubernetes troubleshooting that explains why, not just what."
     license: MIT
-    custom_block: |
-      head "https://github.com/gabor-boros/klue", branch: "main"
-
-      livecheck do
-        url "https://github.com/gabor-boros/klue/releases"
-        regex(/^v(\d+(?:\.\d+)+)$/i)
-      end

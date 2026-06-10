@@ -18,6 +18,14 @@ tags:
     The binary is installed to your `GOBIN` directory (typically
     `$(go env GOPATH)/bin`). Make sure that directory is on your `PATH`.
 
+=== "Homebrew
+
+    Requires [brew](https://brew.sh) installed.
+
+    ```bash
+    brew install --cask gabor-boros/brew/klue
+    ```
+
 === "Prebuilt binary"
 
     Download a prebuilt binary for your platform from the

@@ -14,6 +14,12 @@ To build and preview locally: `make docs-serve`.
 go install github.com/gabor-boros/klue@latest
 ```
 
+or
+
+```bash
+brew install --cask gabor-boros/brew/klue
+```
+
 Or download a prebuilt binary from the [releases page](https://github.com/gabor-boros/klue/releases).
 
 ## Usage

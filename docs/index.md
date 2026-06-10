@@ -17,6 +17,8 @@ certificate failures.
 
 ```bash
 go install github.com/gabor-boros/klue@latest
+# or `brew install --cask gabor-boros/brew/klue`
+
 klue why pod <name> -n <namespace>  # (1)!
 ```
 
