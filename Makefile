@@ -11,7 +11,7 @@ SHELL := bash
 # Pinned tooling versions (keep in sync with .github/workflows and configs).
 GOLANGCI_LINT_VERSION ?= v2.12.2
 GORELEASER_VERSION    ?= v2.16.0
-GIT_CLIFF_VERSION     ?= 2.12.0
+GIT_CLIFF_VERSION     ?= 2.13.1
 MKDOCS_MATERIAL_VERSION ?= 9.6.14
 
 # Project metadata.
