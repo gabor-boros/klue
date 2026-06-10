@@ -64,6 +64,7 @@ homebrew_casks:
   - repository:
       owner: gabor-boros
       name: homebrew-brew
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     commit_author:
       name: "Gabor Boros"
       email: gabor.brs@gmail.com
