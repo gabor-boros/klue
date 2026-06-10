@@ -28,6 +28,7 @@ body = """
 {{ commit.message | upper_first }}\
 {% endfor %}
 {% endfor %}
+
 """
 trim = true
 footer = """
