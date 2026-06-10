@@ -44,7 +44,7 @@ jobs:
           echo "Release notes:"
           cat /tmp/release-notes.md
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
           version: "~> v2"
