@@ -18,7 +18,7 @@ tags:
     The binary is installed to your `GOBIN` directory (typically
     `$(go env GOPATH)/bin`). Make sure that directory is on your `PATH`.
 
-=== "Homebrew
+=== "Homebrew"
 
     Requires [brew](https://brew.sh) installed.
 

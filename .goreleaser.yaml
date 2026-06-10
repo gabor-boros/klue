@@ -71,3 +71,9 @@ homebrew_casks:
     homepage: "https://github.com/gabor-boros/klue"
     description: "Kubernetes troubleshooting that explains why, not just what."
     license: MIT
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/klue"]
+          end
