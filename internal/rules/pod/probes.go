@@ -2,11 +2,13 @@ package pod
 
 import (
 	"fmt"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 
 	"github.com/gabor-boros/klue/internal/diagnose"
 	"github.com/gabor-boros/klue/internal/graph"
+	"github.com/gabor-boros/klue/internal/rules/ruleutil"
 	"github.com/gabor-boros/klue/pkg/resource"
 )
 
@@ -33,33 +35,57 @@ func (r ProbeRule) Evaluate(ctx diagnose.RuleContext, node *graph.Node) []diagno
 		return nil
 	}
 
-	event, unhealthy := diagnose.HasEventReason(ctx, node.Ref, "Unhealthy")
+	notReadyStatuses := make([]corev1.ContainerStatus, 0, len(pod.Status.ContainerStatuses))
+	for _, status := range pod.Status.ContainerStatuses {
+		if status.State.Running != nil && !status.Ready {
+			notReadyStatuses = append(notReadyStatuses, status)
+		}
+	}
+	if len(notReadyStatuses) == 0 {
+		return nil
+	}
+
+	event, unhealthy := ruleutil.LatestWarningEvent(ctx, node.Ref, func(event corev1.Event) bool {
+		for _, status := range notReadyStatuses {
+			if ruleutil.MatchProbeEvent(event, status.Name) {
+				return true
+			}
+		}
+		return false
+	}, "Unhealthy")
 	if !unhealthy {
 		return nil
 	}
 
-	notReady := false
-	for _, status := range pod.Status.ContainerStatuses {
-		if status.State.Running != nil && !status.Ready {
-			notReady = true
+	evidenceItems := []diagnose.Evidence{
+		ruleutil.NewEventEvidence(node.Ref, event),
+	}
+	for _, status := range notReadyStatuses {
+		evidenceItems = append(evidenceItems, ruleutil.LogEvidence(ctx, node.Ref, status.Name, false)...)
+	}
+
+	explanation := "A running container is reporting not-ready due to probe failures."
+	if strings.Contains(strings.ToLower(event.Message), "readiness") {
+		explanation = "A running container is reporting not-ready due to failing readiness probes."
+	} else if strings.Contains(strings.ToLower(event.Message), "liveness") {
+		explanation = "A running container is repeatedly failing liveness probes."
+	}
+	for _, status := range notReadyStatuses {
+		if logExplanation := ruleutil.LogExplanation(ctx, node.Ref, status.Name); logExplanation != "" {
+			explanation += logExplanation
 			break
 		}
-	}
-	if !notReady {
-		return nil
 	}
 
 	return []diagnose.Finding{
 		{
-			ID:         r.ID(),
-			Title:      "Pod is failing health probes",
-			Severity:   diagnose.SeverityWarning,
-			Confidence: 0.7,
-			Resource:   node.Ref,
-			Evidence: []diagnose.Evidence{
-				diagnose.NewEvidence(node.Ref, "Event", event.Message, event.Reason),
-			},
-			Explanation: "A container is running but reporting not-ready due to failing readiness/liveness probes.",
+			ID:          r.ID(),
+			Title:       "Pod is failing health probes",
+			Severity:    diagnose.SeverityWarning,
+			Confidence:  0.7,
+			Resource:    node.Ref,
+			Evidence:    evidenceItems,
+			Explanation: explanation,
 			Suggestions: []diagnose.Suggestion{
 				{
 					Title:   "Review probe configuration and application health",

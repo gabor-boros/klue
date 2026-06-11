@@ -9,6 +9,7 @@ import (
 
 	"github.com/gabor-boros/klue/internal/diagnose"
 	"github.com/gabor-boros/klue/internal/graph"
+	"github.com/gabor-boros/klue/internal/rules/ruleutil"
 	"github.com/gabor-boros/klue/pkg/resource"
 )
 
@@ -26,7 +27,7 @@ func (FailedRule) AppliesTo() []resource.Kind {
 	return []resource.Kind{resource.ReferenceKindJob}
 }
 
-func (r FailedRule) Evaluate(_ diagnose.RuleContext, node *graph.Node) []diagnose.Finding {
+func (r FailedRule) Evaluate(ctx diagnose.RuleContext, node *graph.Node) []diagnose.Finding {
 	j, ok := graph.As[*batchv1.Job](node)
 	if !ok {
 		return nil
@@ -48,17 +49,26 @@ func (r FailedRule) Evaluate(_ diagnose.RuleContext, node *graph.Node) []diagnos
 			explanation = "The Job ran longer than activeDeadlineSeconds and was terminated before completing."
 		}
 
+		evidenceItems := make([]diagnose.Evidence, 0, 2)
+		evidenceItems = append(
+			evidenceItems,
+			diagnose.NewEvidence(node.Ref, diagnose.EvidenceCondition, condition.Message, condition.Reason),
+			diagnose.NewEvidence(node.Ref, diagnose.EvidenceStatus, fmt.Sprintf("failed=%d succeeded=%d active=%d", j.Status.Failed, j.Status.Succeeded, j.Status.Active), ""),
+		)
+		evidenceItems = append(evidenceItems, jobPodLogEvidence(ctx, node, j.Namespace)...)
+
+		if logExplanation := jobPodLogExplanation(ctx, node, j.Namespace); logExplanation != "" {
+			explanation += logExplanation
+		}
+
 		return []diagnose.Finding{
 			{
-				ID:         r.ID(),
-				Title:      title,
-				Severity:   diagnose.SeverityError,
-				Confidence: 0.85,
-				Resource:   node.Ref,
-				Evidence: []diagnose.Evidence{
-					diagnose.NewEvidence(node.Ref, "Condition", condition.Message, condition.Reason),
-					diagnose.NewEvidence(node.Ref, "Status", fmt.Sprintf("failed=%d succeeded=%d active=%d", j.Status.Failed, j.Status.Succeeded, j.Status.Active), ""),
-				},
+				ID:          r.ID(),
+				Title:       title,
+				Severity:    diagnose.SeverityError,
+				Confidence:  0.85,
+				Resource:    node.Ref,
+				Evidence:    evidenceItems,
 				Explanation: explanation,
 				Suggestions: []diagnose.Suggestion{
 					{
@@ -71,4 +81,56 @@ func (r FailedRule) Evaluate(_ diagnose.RuleContext, node *graph.Node) []diagnos
 	}
 
 	return nil
+}
+
+func jobPodLogEvidence(ctx diagnose.RuleContext, jobNode *graph.Node, namespace string) []diagnose.Evidence {
+	if ctx.Graph == nil || ctx.Logs == nil {
+		return nil
+	}
+
+	var evidenceItems []diagnose.Evidence
+	for _, podNode := range ownedPods(ctx.Graph, jobNode) {
+		pod, ok := graph.As[*corev1.Pod](&podNode)
+		if !ok {
+			continue
+		}
+		for _, status := range pod.Status.ContainerStatuses {
+			evidenceItems = append(evidenceItems, ruleutil.LogEvidence(ctx, podNode.Ref, status.Name, false)...)
+		}
+		_ = namespace
+	}
+	return evidenceItems
+}
+
+func jobPodLogExplanation(ctx diagnose.RuleContext, jobNode *graph.Node, namespace string) string {
+	if ctx.Graph == nil || ctx.Logs == nil {
+		return ""
+	}
+
+	for _, podNode := range ownedPods(ctx.Graph, jobNode) {
+		pod, ok := graph.As[*corev1.Pod](&podNode)
+		if !ok {
+			continue
+		}
+		for _, status := range pod.Status.ContainerStatuses {
+			if explanation := ruleutil.LogExplanation(ctx, podNode.Ref, status.Name); explanation != "" {
+				return explanation
+			}
+		}
+		_ = namespace
+	}
+	return ""
+}
+
+func ownedPods(g *graph.Graph, owner *graph.Node) []graph.Node {
+	var pods []graph.Node
+	for _, edge := range g.GetOutboundEdges(*owner) {
+		if edge.Kind != graph.EdgeOwns {
+			continue
+		}
+		if edge.To.Ref.Kind == resource.ReferenceKindPod {
+			pods = append(pods, edge.To)
+		}
+	}
+	return pods
 }

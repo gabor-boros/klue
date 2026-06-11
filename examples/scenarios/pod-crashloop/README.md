@@ -26,7 +26,10 @@ kubectl get pod crashloop-demo -n klue-demo-crashloop -w
 
 ## Expected signal
 
-Look for a summary/root-cause mentioning `CrashLoopBackOff`.
+Look for a summary/root-cause mentioning `CrashLoopBackOff`. When log access is
+available, klue also surfaces relevant log excerpts (for example the intentional
+exit message from the crashing container). With `--debug`, JSON output also
+shows log-candidate selection reasons and correlation metadata.
 
 ## Teardown
 

@@ -6,7 +6,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	"github.com/gabor-boros/klue/internal/diagnose"
+	"github.com/gabor-boros/klue/internal/evidence"
 	"github.com/gabor-boros/klue/internal/graph"
+	"github.com/gabor-boros/klue/internal/rules/ruleutil"
 	"github.com/gabor-boros/klue/pkg/resource"
 )
 
@@ -33,11 +35,16 @@ func (r PendingRule) Evaluate(ctx diagnose.RuleContext, node *graph.Node) []diag
 		return nil
 	}
 
-	event, scheduled := diagnose.HasEventReason(ctx, node.Ref, "FailedScheduling")
+	event, scheduled := ruleutil.LatestWarningEvent(ctx, node.Ref, nil, "FailedScheduling")
 	if !scheduled {
 		// Pending without a scheduling failure is often a transient state
 		// (e.g. ContainerCreating); leave that to the more specific rules.
 		return nil
+	}
+
+	cause := "insufficient resources, node selectors/affinity, or taints"
+	if signal, ok := evidence.ParseWarningEventSignal(event); ok && signal.Category == "scheduling" {
+		cause = schedulingCauseExplanation(signal.Cause)
 	}
 
 	return []diagnose.Finding{
@@ -48,9 +55,9 @@ func (r PendingRule) Evaluate(ctx diagnose.RuleContext, node *graph.Node) []diag
 			Confidence: 0.8,
 			Resource:   node.Ref,
 			Evidence: []diagnose.Evidence{
-				diagnose.NewEvidence(node.Ref, "Event", event.Message, event.Reason),
+				diagnose.NewEvidence(node.Ref, diagnose.EvidenceEvent, event.Message, event.Reason),
 			},
-			Explanation: "The scheduler could not place the pod on any node. This is usually caused by insufficient resources, node selectors/affinity, or taints.",
+			Explanation: fmt.Sprintf("The scheduler could not place the pod on any node. The latest warning event suggests %s.", cause),
 			Suggestions: []diagnose.Suggestion{
 				{
 					Title:   "Review scheduling constraints and cluster capacity",
@@ -58,5 +65,24 @@ func (r PendingRule) Evaluate(ctx diagnose.RuleContext, node *graph.Node) []diag
 				},
 			},
 		},
+	}
+}
+
+func schedulingCauseExplanation(cause string) string {
+	switch cause {
+	case "insufficient-cpu":
+		return "insufficient CPU on schedulable nodes"
+	case "insufficient-memory":
+		return "insufficient memory on schedulable nodes"
+	case "selector-or-affinity":
+		return "node selector or affinity constraints that do not match available nodes"
+	case "taints-or-tolerations":
+		return "taints/tolerations mismatch"
+	case "pvc-binding":
+		return "unbound PVC constraints blocking scheduling"
+	case "topology-spread":
+		return "topology spread constraints that cannot currently be satisfied"
+	default:
+		return "a scheduling constraint or resource availability issue"
 	}
 }

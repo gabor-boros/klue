@@ -129,17 +129,57 @@ func diagnoseWithClient(cmd *cobra.Command, client *kube.Client, resources []kub
 	resourceGraph := snapshot.BuildGraph()
 	eventIndex := evidence.NewEventIndex(snapshot.Events)
 
+	options, err := diagnoseOptionsFromFlags(cmd, namespace)
+	if err != nil {
+		return err
+	}
+
 	targetNamespace := namespace
 	if !entry.Namespaced {
 		targetNamespace = ""
 	}
 
 	target := resource.NewReference(entry.Kind, entry.APIVersion(), targetNamespace, name, "")
-	if _, ok := resourceGraph.FindByRef(target); !ok {
+	targetNode, ok := resourceGraph.FindByRef(target)
+	if !ok {
 		if !entry.Namespaced {
 			return fmt.Errorf("%s not found", target.Display())
 		}
 		return fmt.Errorf("%s not found in namespace %q", target.Display(), namespace)
+	}
+	target = targetNode.Ref
+
+	var logIndex *evidence.LogIndex
+	var debugInfo *diagnose.DebugInfo
+	if options.Debug {
+		debugInfo = &diagnose.DebugInfo{
+			EventWindow: options.EventWindow.String(),
+		}
+	}
+	if options.FetchLogs {
+		candidates := evidence.SelectLogCandidates(resourceGraph, target, snapshot.Pods, eventIndex, options.MaxLogCandidates)
+		if debugInfo != nil {
+			debugInfo.LogCandidatesTotal = len(candidates)
+			debugInfo.LogCandidates = make([]diagnose.DebugLogCandidate, 0, len(candidates))
+			for _, candidate := range candidates {
+				debugInfo.LogCandidates = append(debugInfo.LogCandidates, diagnose.DebugLogCandidate{
+					Pod:       candidate.PodRef.Display(),
+					Container: candidate.Container,
+					Previous:  candidate.Previous,
+					Reason:    candidate.Reason,
+				})
+			}
+		}
+		logEntries := client.FetchPodLogs(ctx, candidates, options.LogTailLines)
+		logIndex = evidence.NewLogIndex(logEntries)
+		if debugInfo != nil {
+			debugInfo.LogEntriesFetched = len(logEntries)
+			for _, entry := range logEntries {
+				if entry.FetchError != "" {
+					debugInfo.LogFetchErrors++
+				}
+			}
+		}
 	}
 
 	onlyRules, err := cmd.Flags().GetStringArray(onlyRuleFlag)
@@ -158,18 +198,32 @@ func diagnoseWithClient(cmd *cobra.Command, client *kube.Client, resources []kub
 	if err != nil {
 		return err
 	}
-
-	options, err := diagnoseOptionsFromFlags(cmd, namespace)
-	if err != nil {
-		return err
+	if debugInfo != nil {
+		debugInfo.RulesSelected = make([]string, 0, len(selectedRules))
+		for _, rule := range selectedRules {
+			debugInfo.RulesSelected = append(debugInfo.RulesSelected, rule.ID())
+		}
 	}
 
 	engine := diagnose.NewEngine(selectedRules...)
 	result := engine.Diagnose(diagnose.RuleContext{
 		Graph:   resourceGraph,
 		Events:  eventIndex,
+		Logs:    logIndex,
 		Options: options,
 	}, target)
+	if debugInfo != nil {
+		if result.Debug == nil {
+			result.Debug = debugInfo
+		} else {
+			result.Debug.EventWindow = debugInfo.EventWindow
+			result.Debug.RulesSelected = debugInfo.RulesSelected
+			result.Debug.LogCandidates = debugInfo.LogCandidates
+			result.Debug.LogCandidatesTotal = debugInfo.LogCandidatesTotal
+			result.Debug.LogEntriesFetched = debugInfo.LogEntriesFetched
+			result.Debug.LogFetchErrors = debugInfo.LogFetchErrors
+		}
+	}
 
 	outputFormat, err := cmd.Flags().GetString(outputFlag)
 	if err != nil {
@@ -213,6 +267,28 @@ func diagnoseOptionsFromFlags(cmd *cobra.Command, namespace string) (diagnose.Di
 		return options, err
 	}
 	options.ScanNamespaceRemainder = !noNamespaceScan
+
+	noFetchLogs, err := cmd.Flags().GetBool(noFetchLogsFlag)
+	if err != nil {
+		return options, err
+	}
+	options.FetchLogs = !noFetchLogs
+
+	logTailLines, err := cmd.Flags().GetInt64(logTailLinesFlag)
+	if err != nil {
+		return options, err
+	}
+	if logTailLines > 0 {
+		options.LogTailLines = logTailLines
+	}
+
+	options.MaxLogCandidates = diagnose.DefaultMaxLogCandidates
+
+	debugEnabled, err := cmd.Flags().GetBool(debugFlag)
+	if err != nil {
+		return options, err
+	}
+	options.Debug = debugEnabled
 
 	return options, nil
 }

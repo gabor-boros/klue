@@ -4,7 +4,6 @@ package evidence
 
 import (
 	"sort"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
 
@@ -38,7 +37,7 @@ func (s *EventSet) Events() []corev1.Event {
 	copy(out, s.events)
 
 	sort.SliceStable(out, func(i, j int) bool {
-		ti, tj := eventTime(out[i]), eventTime(out[j])
+		ti, tj := EffectiveEventTime(out[i]), EffectiveEventTime(out[j])
 		if !ti.Equal(tj) {
 			return ti.Before(tj)
 		}
@@ -142,18 +141,4 @@ func (i *EventIndex) For(ref resource.Reference) *EventSet {
 	}
 
 	return &EventSet{}
-}
-
-// eventTime returns the most meaningful timestamp for an event, preferring
-// LastTimestamp, then the structured EventTime, then FirstTimestamp.
-func eventTime(event corev1.Event) time.Time {
-	if !event.LastTimestamp.IsZero() {
-		return event.LastTimestamp.Time
-	}
-
-	if !event.EventTime.IsZero() {
-		return event.EventTime.Time
-	}
-
-	return event.FirstTimestamp.Time
 }

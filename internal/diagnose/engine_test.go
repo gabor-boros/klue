@@ -107,3 +107,91 @@ func TestEngineDiagnose_TargetNotFound(t *testing.T) {
 		t.Error("Summary is empty, want a not-found message")
 	}
 }
+
+func TestEngineDiagnose_RootCauseByCorroboration(t *testing.T) {
+	t.Parallel()
+
+	target := podRef("web")
+	singleEvidence := diagnose.Finding{
+		ID:         "a/warn",
+		Title:      "single evidence",
+		Severity:   diagnose.SeverityWarning,
+		Confidence: 0.95,
+		Resource:   target,
+		Evidence: []diagnose.Evidence{
+			diagnose.NewEvidence(target, diagnose.EvidenceStatus, "status", ""),
+		},
+	}
+	corroborated := diagnose.Finding{
+		ID:         "b/warn",
+		Title:      "corroborated",
+		Severity:   diagnose.SeverityWarning,
+		Confidence: 0.8,
+		Resource:   target,
+		Evidence: []diagnose.Evidence{
+			diagnose.NewEvidence(target, diagnose.EvidenceStatus, "status", ""),
+			diagnose.NewEvidence(target, diagnose.EvidenceEvent, "event", "Failed"),
+			diagnose.NewEvidence(target, diagnose.EvidenceLog, "log", "panic: boom"),
+		},
+	}
+
+	engine := diagnose.NewEngine(
+		stubRule{id: "a", kinds: []resource.Kind{resource.ReferenceKindPod}, findings: []diagnose.Finding{singleEvidence}},
+		stubRule{id: "b", kinds: []resource.Kind{resource.ReferenceKindPod}, findings: []diagnose.Finding{corroborated}},
+	)
+
+	d := engine.Diagnose(diagnose.RuleContext{Graph: newGraphWithPod("web"), Options: diagnose.DefaultDiagnoseOptions()}, target)
+	if d.RootCause == nil {
+		t.Fatal("RootCause = nil, want corroborated finding")
+	}
+	if d.RootCause.ID != "b/warn" {
+		t.Fatalf("RootCause.ID = %q, want corroborated finding to rank first", d.RootCause.ID)
+	}
+}
+
+func TestEngineDiagnose_SuppressesRedundantBuiltinWarningEvents(t *testing.T) {
+	t.Parallel()
+
+	target := podRef("web")
+	typed := diagnose.Finding{
+		ID:         "pod/probe-failure",
+		Title:      "typed",
+		Severity:   diagnose.SeverityWarning,
+		Confidence: 0.7,
+		Resource:   target,
+		Evidence: []diagnose.Evidence{
+			diagnose.NewEvidence(target, diagnose.EvidenceEvent, "Readiness probe failed", "Unhealthy"),
+		},
+	}
+	builtinWarning := diagnose.Finding{
+		ID:         "builtin/warning-events",
+		Title:      "warning event",
+		Severity:   diagnose.SeverityWarning,
+		Confidence: 0.4,
+		Resource:   target,
+		Evidence: []diagnose.Evidence{
+			diagnose.NewEvidence(target, diagnose.EvidenceEvent, "Readiness probe failed", "Unhealthy"),
+		},
+	}
+
+	engine := diagnose.NewEngine(
+		stubRule{id: "typed", kinds: []resource.Kind{resource.ReferenceKindPod}, findings: []diagnose.Finding{typed}},
+		stubRule{id: "builtin", kinds: []resource.Kind{resource.ReferenceKindPod}, findings: []diagnose.Finding{builtinWarning}},
+	)
+
+	d := engine.Diagnose(diagnose.RuleContext{
+		Graph: newGraphWithPod("web"),
+		Options: diagnose.DiagnoseOptions{
+			Debug: true,
+		},
+	}, target)
+	if len(d.Findings) != 1 {
+		t.Fatalf("Findings = %d, want 1 after dedupe", len(d.Findings))
+	}
+	if d.Findings[0].ID != "pod/probe-failure" {
+		t.Fatalf("Findings[0].ID = %q, want typed finding", d.Findings[0].ID)
+	}
+	if d.Debug == nil || d.Debug.SuppressedFindings == 0 {
+		t.Fatalf("Debug = %+v, want suppressed findings metadata", d.Debug)
+	}
+}

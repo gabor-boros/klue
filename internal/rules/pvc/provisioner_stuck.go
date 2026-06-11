@@ -6,7 +6,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	"github.com/gabor-boros/klue/internal/diagnose"
+	"github.com/gabor-boros/klue/internal/evidence"
 	"github.com/gabor-boros/klue/internal/graph"
+	"github.com/gabor-boros/klue/internal/rules/ruleutil"
 	"github.com/gabor-boros/klue/pkg/resource"
 )
 
@@ -33,9 +35,14 @@ func (r ProvisionerStuckRule) Evaluate(ctx diagnose.RuleContext, node *graph.Nod
 		return nil
 	}
 
-	event, failed := diagnose.HasEventReason(ctx, node.Ref, "ProvisioningFailed")
+	event, failed := ruleutil.LatestWarningEvent(ctx, node.Ref, nil, "ProvisioningFailed")
 	if !failed {
 		return nil
+	}
+
+	cause := "external provisioner failure"
+	if signal, ok := evidence.ParseWarningEventSignal(event); ok && signal.Category == "provisioning" {
+		cause = provisioningCauseExplanation(signal.Cause)
 	}
 
 	return []diagnose.Finding{
@@ -46,9 +53,9 @@ func (r ProvisionerStuckRule) Evaluate(ctx diagnose.RuleContext, node *graph.Nod
 			Confidence: 0.8,
 			Resource:   node.Ref,
 			Evidence: []diagnose.Evidence{
-				diagnose.NewEvidence(node.Ref, "Event", event.Message, event.Reason),
+				ruleutil.NewEventEvidence(node.Ref, event),
 			},
-			Explanation: "The external provisioner reported a failure while creating the volume.",
+			Explanation: "The external provisioner reported a failure while creating the volume. Likely cause: " + cause + ".",
 			Suggestions: []diagnose.Suggestion{
 				{
 					Title:   "Inspect the PVC events and provisioner logs",
@@ -56,5 +63,18 @@ func (r ProvisionerStuckRule) Evaluate(ctx diagnose.RuleContext, node *graph.Nod
 				},
 			},
 		},
+	}
+}
+
+func provisioningCauseExplanation(cause string) string {
+	switch cause {
+	case "quota-exceeded":
+		return "quota exceeded in the storage backend or namespace"
+	case "permission-denied":
+		return "permission or IAM policy denied by the storage backend"
+	case "topology-constraint":
+		return "zone/topology constraints preventing provisioning"
+	default:
+		return "provisioning failure reported by the CSI provisioner"
 	}
 }

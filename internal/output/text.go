@@ -48,8 +48,73 @@ func RenderDiagnosis(w io.Writer, d diagnose.Diagnosis) error {
 		}
 	}
 
+	if d.Debug != nil {
+		b.WriteString("\nDebug:\n")
+		if d.Debug.EventWindow != "" {
+			fmt.Fprintf(&b, "  event window: %s\n", d.Debug.EventWindow)
+		}
+		if d.Debug.LogCandidatesTotal > 0 {
+			fmt.Fprintf(&b, "  log candidates: %d\n", d.Debug.LogCandidatesTotal)
+		}
+		if d.Debug.LogEntriesFetched > 0 || d.Debug.LogFetchErrors > 0 {
+			fmt.Fprintf(&b, "  logs fetched: %d (errors: %d)\n", d.Debug.LogEntriesFetched, d.Debug.LogFetchErrors)
+		}
+		if d.Debug.CorrelatedFindings > 0 || d.Debug.SuppressedFindings > 0 {
+			fmt.Fprintf(&b, "  correlation: %d findings corroborated, %d findings suppressed\n", d.Debug.CorrelatedFindings, d.Debug.SuppressedFindings)
+		}
+		if len(d.Debug.LogCandidates) > 0 {
+			b.WriteString("  candidate details:\n")
+			for _, candidate := range d.Debug.LogCandidates {
+				run := "current"
+				if candidate.Previous {
+					run = "previous"
+				}
+				fmt.Fprintf(&b, "    - %s container=%s (%s)", candidate.Pod, candidate.Container, run)
+				if candidate.Reason != "" {
+					fmt.Fprintf(&b, " reason=%s", candidate.Reason)
+				}
+				b.WriteByte('\n')
+			}
+		}
+	}
+
 	_, err := io.WriteString(w, b.String())
 	return err
+}
+
+func writeEvidence(b *strings.Builder, ev diagnose.Evidence) {
+	if ev.Message == "" && ev.Raw == "" {
+		return
+	}
+
+	if ev.Type == diagnose.EvidenceLog {
+		if ev.Message != "" {
+			fmt.Fprintf(b, "      evidence: %s\n", ev.Message)
+		}
+		for _, line := range splitEvidenceLines(ev.Raw) {
+			fmt.Fprintf(b, "      log: %s\n", line)
+		}
+		return
+	}
+
+	if ev.Message != "" {
+		fmt.Fprintf(b, "      evidence: %s\n", ev.Message)
+	}
+}
+
+func splitEvidenceLines(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	lines := strings.Split(raw, "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			out = append(out, line)
+		}
+	}
+	return out
 }
 
 func writeFinding(b *strings.Builder, finding *diagnose.Finding) {
@@ -58,10 +123,7 @@ func writeFinding(b *strings.Builder, finding *diagnose.Finding) {
 		fmt.Fprintf(b, "      %s\n", finding.Explanation)
 	}
 	for _, ev := range finding.Evidence {
-		if ev.Message == "" {
-			continue
-		}
-		fmt.Fprintf(b, "      evidence: %s\n", ev.Message)
+		writeEvidence(b, ev)
 	}
 }
 

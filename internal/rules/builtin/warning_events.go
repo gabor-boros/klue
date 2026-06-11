@@ -34,9 +34,6 @@ func (r WarningEventsRule) Evaluate(ctx diagnose.RuleContext, node *graph.Node) 
 	}
 
 	latest := warnings[len(warnings)-1]
-	if !withinWindow(latest, ctx.Options.Now, ctx.Options.EventWindow) {
-		return nil
-	}
 
 	return []diagnose.Finding{
 		{

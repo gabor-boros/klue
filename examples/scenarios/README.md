@@ -12,6 +12,7 @@ This directory contains intentionally broken Kubernetes manifests for manual `kl
 | Scenario | Target resource | Expected rule(s) | Run command |
 | --- | --- | --- | --- |
 | `pod-crashloop` | Pod `crashloop-demo` | `pod/crashloop` | `./bin/klue why pod crashloop-demo -n klue-demo-crashloop` |
+| `deployment-probe-correlation` | Deployment `probe-correlation-demo` (or owned Pod) | `pod/probe-failure`, `deployment/unavailable` | `./bin/klue why deployment probe-correlation-demo -n klue-demo-probe-correlation --disable-rule deployment/unavailable --debug` |
 | `pod-config-missing` | Pod `config-missing-demo` | `pod/config-missing` | `./bin/klue why pod config-missing-demo -n klue-demo-config-missing` |
 | `service-selector-mismatch` | Service `mismatch-demo` | `service/selector-mismatch`, often `service/no-endpoints` | `./bin/klue why service mismatch-demo -n klue-demo-selector-mismatch` |
 | `ingress-backend-missing` | Ingress `backend-missing-demo` | `ingress/backend-missing` | `./bin/klue why ingress backend-missing-demo -n klue-demo-ingress-backend` |
@@ -42,6 +43,7 @@ done
 set -euo pipefail
 for ns in \
   klue-demo-crashloop \
+  klue-demo-probe-correlation \
   klue-demo-config-missing \
   klue-demo-selector-mismatch \
   klue-demo-ingress-backend \
@@ -58,4 +60,5 @@ kubectl delete crd widgets.demo.klue.io --ignore-not-found
 
 - Scenarios are plain YAML (no Helm/Kustomize).
 - `pod-crashloop` usually needs about 20-40 seconds before `CrashLoopBackOff` appears.
+- `deployment-probe-correlation` needs about 20-60 seconds for readiness probe failures and warning events to accumulate.
 - Findings may vary slightly by cluster version and event timing, but the listed rules should be reproducible.
