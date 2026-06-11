@@ -19,6 +19,14 @@ const (
 	// DefaultLeaseStaleMultiplier is how many lease durations may elapse past
 	// the last renewal before the holder is considered stale.
 	DefaultLeaseStaleMultiplier = 4
+
+	// DefaultLogTailLines is how many trailing log lines are fetched per
+	// container when log collection is enabled.
+	DefaultLogTailLines = 100
+
+	// DefaultMaxLogCandidates caps how many pod containers may have logs
+	// fetched during a single diagnosis.
+	DefaultMaxLogCandidates = 10
 )
 
 // DiagnoseOptions controls how a diagnosis is performed. Keeping these as
@@ -51,6 +59,20 @@ type DiagnoseOptions struct {
 	// ScanNamespaceRemainder enables scanning unvisited nodes in the target
 	// namespace when graph traversal finds no issues.
 	ScanNamespaceRemainder bool
+
+	// FetchLogs enables fetching container logs for unhealthy pods related to
+	// the diagnosis target.
+	FetchLogs bool
+
+	// LogTailLines bounds how many trailing lines are retrieved per container.
+	LogTailLines int64
+
+	// MaxLogCandidates limits how many pod containers may have logs fetched.
+	MaxLogCandidates int
+
+	// Debug enables emitting pipeline diagnostics and correlation metadata in
+	// the diagnosis output.
+	Debug bool
 }
 
 // DefaultDiagnoseOptions returns DiagnoseOptions populated with sensible
@@ -63,5 +85,8 @@ func DefaultDiagnoseOptions() DiagnoseOptions {
 		TerminatingGracePeriod: DefaultTerminatingGracePeriod,
 		LeaseStaleMultiplier:   DefaultLeaseStaleMultiplier,
 		ScanNamespaceRemainder: true,
+		FetchLogs:              true,
+		LogTailLines:           DefaultLogTailLines,
+		MaxLogCandidates:       DefaultMaxLogCandidates,
 	}
 }

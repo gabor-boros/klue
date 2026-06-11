@@ -15,6 +15,7 @@ const (
 	EvidenceStatus    EvidenceType = "Status"
 	EvidenceReference EvidenceType = "Reference"
 	EvidenceSpec      EvidenceType = "Spec"
+	EvidenceLog       EvidenceType = "Log"
 )
 
 // Evidence captures a single observation that supports a finding. It records

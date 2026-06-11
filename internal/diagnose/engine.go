@@ -74,11 +74,21 @@ func (e *Engine) Diagnose(rctx RuleContext, target resource.Reference) Diagnosis
 		chainNodes = append(chainNodes, fallbackNodes...)
 	}
 
+	correlated := annotateCorroboration(findings)
+	var suppressed int
+	findings, suppressed = suppressRedundantBuiltinFindings(findings)
 	sortFindings(findings)
 
 	diagnosis.Findings = findings
 	diagnosis.Chain = buildChain(chainNodes, findings)
 	diagnosis.Suggestions = aggregateSuggestions(findings)
+	if rctx.Options.Debug {
+		diagnosis.Debug = &DebugInfo{
+			EventWindow:        rctx.Options.EventWindow.String(),
+			CorrelatedFindings: correlated,
+			SuppressedFindings: suppressed,
+		}
+	}
 
 	switch {
 	case len(findings) > 0:
@@ -239,11 +249,115 @@ func sortFindings(findings []Finding) {
 		if ri != rj {
 			return ri > rj
 		}
+		if findings[i].Corroboration != findings[j].Corroboration {
+			return findings[i].Corroboration > findings[j].Corroboration
+		}
 		if findings[i].Confidence != findings[j].Confidence {
 			return findings[i].Confidence > findings[j].Confidence
 		}
 		return findings[i].ID < findings[j].ID
 	})
+}
+
+func annotateCorroboration(findings []Finding) int {
+	correlatedFindings := 0
+	for i := range findings {
+		evidenceTypes := make(map[EvidenceType]struct{}, len(findings[i].Evidence))
+		for _, ev := range findings[i].Evidence {
+			evidenceTypes[ev.Type] = struct{}{}
+		}
+
+		score := len(evidenceTypes)
+		_, hasEvent := evidenceTypes[EvidenceEvent]
+		_, hasLog := evidenceTypes[EvidenceLog]
+		_, hasStatus := evidenceTypes[EvidenceStatus]
+		_, hasCondition := evidenceTypes[EvidenceCondition]
+
+		if hasEvent && hasLog {
+			score += 2
+		}
+		if hasEvent && hasStatus {
+			score++
+		}
+		if hasCondition && hasLog {
+			score++
+		}
+
+		findings[i].Corroboration = score
+		if score > 1 {
+			correlatedFindings++
+		}
+	}
+	return correlatedFindings
+}
+
+func suppressRedundantBuiltinFindings(findings []Finding) ([]Finding, int) {
+	if len(findings) == 0 {
+		return findings, 0
+	}
+
+	typedEventEvidence := make(map[string]map[string]struct{})
+	typedLogEvidence := make(map[string]map[string]struct{})
+	for _, finding := range findings {
+		if finding.ID == "builtin/warning-events" || finding.ID == "builtin/log-signal" {
+			continue
+		}
+		key := finding.Resource.Key()
+		for _, ev := range finding.Evidence {
+			switch ev.Type {
+			case EvidenceEvent:
+				if _, ok := typedEventEvidence[key]; !ok {
+					typedEventEvidence[key] = make(map[string]struct{})
+				}
+				typedEventEvidence[key][evidenceSignature(ev)] = struct{}{}
+			case EvidenceLog:
+				if _, ok := typedLogEvidence[key]; !ok {
+					typedLogEvidence[key] = make(map[string]struct{})
+				}
+				typedLogEvidence[key][evidenceSignature(ev)] = struct{}{}
+			}
+		}
+	}
+
+	out := make([]Finding, 0, len(findings))
+	suppressed := 0
+	for _, finding := range findings {
+		resourceKey := finding.Resource.Key()
+		if finding.ID == "builtin/warning-events" {
+			if signatures, ok := typedEventEvidence[resourceKey]; ok {
+				if hasMatchingEvidenceSignature(finding.Evidence, EvidenceEvent, signatures) {
+					suppressed++
+					continue
+				}
+			}
+		}
+		if finding.ID == "builtin/log-signal" {
+			if signatures, ok := typedLogEvidence[resourceKey]; ok {
+				if hasMatchingEvidenceSignature(finding.Evidence, EvidenceLog, signatures) {
+					suppressed++
+					continue
+				}
+			}
+		}
+		out = append(out, finding)
+	}
+	return out, suppressed
+}
+
+func hasMatchingEvidenceSignature(items []Evidence, evidenceType EvidenceType, signatures map[string]struct{}) bool {
+	for _, ev := range items {
+		if ev.Type != evidenceType {
+			continue
+		}
+		if _, ok := signatures[evidenceSignature(ev)]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func evidenceSignature(ev Evidence) string {
+	return ev.Raw + "|" + ev.Message
 }
 
 // buildChain converts the traversal order into chain steps, attaching the first

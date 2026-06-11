@@ -20,6 +20,7 @@ func TestNewDiagnoseCommand(t *testing.T) {
 		terminatingGraceFlag,
 		leaseStaleMultiplierFlag,
 		noNamespaceScanFlag,
+		debugFlag,
 		disableRuleFlag,
 		onlyRuleFlag,
 		outputFlag,
@@ -67,5 +68,22 @@ func TestRootPersistentFlagsRegistered(t *testing.T) {
 		if rootCmd.PersistentFlags().Lookup(flag) == nil {
 			t.Errorf("--%s persistent flag is not registered", flag)
 		}
+	}
+}
+
+func TestDiagnoseOptionsFromFlags_Debug(t *testing.T) {
+	t.Parallel()
+
+	cmd := newWhyCommand()
+	if err := cmd.Flags().Set(debugFlag, "true"); err != nil {
+		t.Fatalf("set --%s: %v", debugFlag, err)
+	}
+
+	options, err := diagnoseOptionsFromFlags(cmd, "default")
+	if err != nil {
+		t.Fatalf("diagnoseOptionsFromFlags() error = %v", err)
+	}
+	if !options.Debug {
+		t.Fatalf("options.Debug = false, want true")
 	}
 }

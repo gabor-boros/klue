@@ -10,5 +10,6 @@ import (
 type RuleContext struct {
 	Graph   *graph.Graph
 	Events  *evidence.EventIndex
+	Logs    *evidence.LogIndex
 	Options DiagnoseOptions
 }

@@ -5,6 +5,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
+	"github.com/gabor-boros/klue/internal/evidence"
 	"github.com/gabor-boros/klue/pkg/resource"
 )
 
@@ -15,13 +16,22 @@ func WarningEvents(ctx RuleContext, ref resource.Reference) []corev1.Event {
 		return nil
 	}
 
-	return ctx.Events.For(ref).Warnings()
+	warnings := ctx.Events.For(ref).Warnings()
+	filtered := make([]corev1.Event, 0, len(warnings))
+	for _, event := range warnings {
+		if evidence.WithinEventWindow(event, ctx.Options.Now, ctx.Options.EventWindow) {
+			filtered = append(filtered, event)
+		}
+	}
+	return filtered
 }
 
 // HasEventReason reports whether any warning event for the resource matches one
 // of the given reasons.
 func HasEventReason(ctx RuleContext, ref resource.Reference, reasons ...string) (corev1.Event, bool) {
-	for _, event := range WarningEvents(ctx, ref) {
+	events := WarningEvents(ctx, ref)
+	for i := len(events) - 1; i >= 0; i-- {
+		event := events[i]
 		if slices.Contains(reasons, event.Reason) {
 			return event, true
 		}

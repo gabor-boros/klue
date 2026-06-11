@@ -48,6 +48,29 @@ func TestRenderDiagnosisJSON(t *testing.T) {
 	}
 }
 
+func TestRenderDiagnosisJSONWithDebug(t *testing.T) {
+	t.Parallel()
+
+	target := resource.NewReference(resource.ReferenceKindPod, "v1", "default", "web", "")
+	d := diagnose.Diagnosis{
+		Target:  target,
+		Summary: "ok",
+		Debug: &diagnose.DebugInfo{
+			EventWindow:        "1h",
+			LogCandidatesTotal: 2,
+		},
+	}
+
+	var b strings.Builder
+	if err := output.RenderDiagnosisJSON(&b, d); err != nil {
+		t.Fatalf("RenderDiagnosisJSON() error = %v", err)
+	}
+
+	if !strings.Contains(b.String(), `"debug":`) {
+		t.Fatalf("json output missing debug payload: %s", b.String())
+	}
+}
+
 func TestRenderDiagnosisFormat(t *testing.T) {
 	t.Parallel()
 

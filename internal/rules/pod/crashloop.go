@@ -8,6 +8,7 @@ import (
 
 	"github.com/gabor-boros/klue/internal/diagnose"
 	"github.com/gabor-boros/klue/internal/graph"
+	"github.com/gabor-boros/klue/internal/rules/ruleutil"
 	"github.com/gabor-boros/klue/pkg/resource"
 )
 
@@ -28,7 +29,7 @@ func (CrashLoopRule) AppliesTo() []resource.Kind {
 }
 
 // Evaluate inspects container statuses for CrashLoopBackOff.
-func (r CrashLoopRule) Evaluate(_ diagnose.RuleContext, node *graph.Node) []diagnose.Finding {
+func (r CrashLoopRule) Evaluate(ctx diagnose.RuleContext, node *graph.Node) []diagnose.Finding {
 	pod, ok := graph.As[*corev1.Pod](node)
 	if !ok {
 		return nil
@@ -41,16 +42,23 @@ func (r CrashLoopRule) Evaluate(_ diagnose.RuleContext, node *graph.Node) []diag
 			continue
 		}
 
+		evidenceItems := make([]diagnose.Evidence, 0, 1)
+		evidenceItems = append(evidenceItems, diagnose.NewEvidence(node.Ref, diagnose.EvidenceStatus, waiting.Message, fmt.Sprintf("restartCount=%d", status.RestartCount)))
+		evidenceItems = append(evidenceItems, ruleutil.LogEvidence(ctx, node.Ref, status.Name, true)...)
+
+		explanation := fmt.Sprintf("Container %q has restarted %d times and is backing off.", status.Name, status.RestartCount)
+		if logExplanation := ruleutil.LogExplanation(ctx, node.Ref, status.Name); logExplanation != "" {
+			explanation += logExplanation
+		}
+
 		findings = append(findings, diagnose.Finding{
-			ID:         r.ID(),
-			Title:      fmt.Sprintf("Container %q is in CrashLoopBackOff", status.Name),
-			Severity:   diagnose.SeverityCritical,
-			Confidence: 0.95,
-			Resource:   node.Ref,
-			Evidence: []diagnose.Evidence{
-				diagnose.NewEvidence(node.Ref, "ContainerStatus", waiting.Message, fmt.Sprintf("restartCount=%d", status.RestartCount)),
-			},
-			Explanation: fmt.Sprintf("Container %q has restarted %d times and is backing off.", status.Name, status.RestartCount),
+			ID:          r.ID(),
+			Title:       fmt.Sprintf("Container %q is in CrashLoopBackOff", status.Name),
+			Severity:    diagnose.SeverityCritical,
+			Confidence:  0.95,
+			Resource:    node.Ref,
+			Evidence:    evidenceItems,
+			Explanation: explanation,
 			Suggestions: []diagnose.Suggestion{
 				{
 					Title:       "Inspect the previous container logs",

@@ -36,6 +36,9 @@ These flags apply only to `klue why`.
 | `--terminating-grace` | — | `5m` | Time before terminating resources are reported as stuck |
 | `--lease-stale-multiplier` | — | `4` | Lease durations before a holder is considered stale |
 | `--no-namespace-scan` | — | `false` | Skip scanning unvisited namespace resources when graph traversal finds no issues |
+| `--no-fetch-logs` | — | `false` | Skip fetching container logs for unhealthy related pods |
+| `--log-tail-lines` | — | `100` | Trailing log lines to fetch per container |
+| `--debug` | — | `false` | Include debug metadata (candidate reasons, fetch stats, correlation/dedupe details) |
 | `--disable-rule` | — | — | Disable a diagnostic rule by ID (repeatable) |
 | `--only-rule` | — | — | Run only the listed rule IDs (repeatable) |
 | `--output` | `-o` | `text` | Output format: `text` or `json` |
@@ -55,13 +58,14 @@ Rule IDs follow the `category/name` pattern. Common examples:
 | Rule ID | Detects |
 |---------|---------|
 | `pod/crashloop` | Containers in a crash loop |
-| `pod/image-pull` | Image pull failures |
+| `pod/image-pull` | Image pull failures, enriched by structured warning-event signals |
 | `pod/config-missing` | Missing ConfigMaps or Secrets |
 | `deployment/rollout-stuck` | Stuck Deployment rollouts |
 | `service/selector-mismatch` | Service selector not matching any Pod |
 | `ingress/backend-missing` | Ingress backend Service not found |
 | `pvc/missing-storageclass` | PVC referencing a missing StorageClass |
 | `builtin/warning-events` | Recent warning events on the resource |
+| `builtin/log-signal` | Failure patterns detected in container logs |
 | `builtin/terminating-stuck` | Resources stuck in terminating state |
 
 ```bash
@@ -74,6 +78,21 @@ klue why deployment api -n prod --disable-rule builtin/warning-events
 
 Unknown rule IDs produce an error listing the invalid values.
 
+### Evidence correlation behavior
+
+`klue why` correlates warning events and container logs during diagnosis:
+
+- Warning events are indexed per involved object and consumed by rules as typed
+  evidence, with a shared parser for image-pull, scheduling, probe, mount, and
+  provisioning warning messages.
+- Log fetching stays bounded (`--log-tail-lines`, candidate cap) and is focused
+  on unhealthy containers related to the target, with selection reasons tracked
+  in debug metadata.
+- Some pod findings (notably `pod/image-pull` and `pod/probe-failure`) combine
+  event and log/status evidence to improve explanation quality and confidence.
+- Generic fallback findings (`builtin/warning-events`) are suppressed when the
+  same event evidence is already captured by a stronger typed finding.
+
 ??? note "All built-in rule IDs"
 
     | Rule ID | Resource kind |
@@ -83,6 +102,7 @@ Unknown rule IDs produce an error listing the invalid values.
     | `pod/config-missing` | Pod |
     | `pod/pending` | Pod |
     | `pod/probe-failure` | Pod |
+    | `pod/mount-failure` | Pod |
     | `deployment/rollout-stuck` | Deployment |
     | `deployment/unavailable` | Deployment |
     | `statefulset/unavailable` | StatefulSet |
@@ -121,6 +141,7 @@ Unknown rule IDs produce an error listing the invalid values.
     | `csr/pending` | CertificateSigningRequest |
     | `lease/stale` | Lease |
     | `builtin/warning-events` | Any |
+    | `builtin/log-signal` | Pod |
     | `builtin/failed-condition` | Any |
     | `builtin/terminating-stuck` | Any |
     | `builtin/missing-reference` | Any |

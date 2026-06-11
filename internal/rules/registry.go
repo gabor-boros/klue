@@ -37,6 +37,7 @@ func All() []diagnose.Rule {
 		pod.ConfigMissingRule{},
 		pod.PendingRule{},
 		pod.ProbeRule{},
+		pod.MountFailureRule{},
 
 		deployment.RolloutStuckRule{},
 		deployment.UnavailableRule{},
@@ -94,6 +95,7 @@ func All() []diagnose.Rule {
 		lease.StaleRule{},
 
 		builtin.WarningEventsRule{},
+		builtin.LogSignalRule{},
 		builtin.FailedConditionRule{},
 		builtin.TerminatingStuckRule{},
 		builtin.MissingReferenceRule{},
