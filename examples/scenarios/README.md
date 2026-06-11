@@ -17,7 +17,6 @@ This directory contains intentionally broken Kubernetes manifests for manual `kl
 | `service-selector-mismatch` | Service `mismatch-demo` | `service/selector-mismatch`, often `service/no-endpoints` | `./bin/klue why service mismatch-demo -n klue-demo-selector-mismatch` |
 | `ingress-backend-missing` | Ingress `backend-missing-demo` | `ingress/backend-missing` | `./bin/klue why ingress backend-missing-demo -n klue-demo-ingress-backend` |
 | `pvc-missing-storageclass` | PVC `missing-sc-demo` | `pvc/missing-storageclass` | `./bin/klue why pvc missing-sc-demo -n klue-demo-pvc-sc` |
-| `complex-crd-multi-failure` | Ingress `complex-gateway` (plus Service/PVC/RoleBinding/CRD checks) | `ingress/backend-missing`, `ingress/tls-secret-missing`, `service/target-port-mismatch`, `pvc/missing-storageclass`, `rbac/missing-role`, `builtin/orphaned-owner` | `./bin/klue why ingress complex-gateway -n klue-demo-complex-crd` |
 | `certmanager-certificate-failed` | Certificate `backend-demo-cert` (and Ingress `backend-demo`) | `builtin/failed-condition`, `ingress/tls-secret-missing` | `./bin/klue why certificate backend-demo-cert --api-version cert-manager.io/v1 -n klue-demo-certmanager-failed` |
 
 ## Run One Scenario
@@ -48,7 +47,6 @@ for ns in \
   klue-demo-selector-mismatch \
   klue-demo-ingress-backend \
   klue-demo-pvc-sc \
-  klue-demo-complex-crd \
   klue-demo-certmanager-failed; do
   kubectl delete namespace "$ns" --ignore-not-found
 done

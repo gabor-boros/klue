@@ -137,8 +137,8 @@ func TestBuildGraphCertManagerRelationshipsWithMissingTargets(t *testing.T) {
 	if !edgeExists(edges, graph.EdgeUsesSecret, "web", "web-tls") {
 		t.Fatal("expected Ingress -> Secret edge via spec.tls[].secretName")
 	}
-	if !edgeExists(edges, graph.EdgeProduces, "web-cert", "web-tls") {
-		t.Fatal("expected Certificate -> Secret producer edge via spec.secretName")
+	if !edgeExists(edges, graph.EdgeUsesSecret, "web-cert", "web-tls") {
+		t.Fatal("expected Certificate -> Secret reference edge via spec.secretName")
 	}
 	if !edgeExists(edges, graph.EdgeReferences, "web-cert", "letsencrypt-staging") {
 		t.Fatal("expected Certificate -> Issuer edge via spec.issuerRef")

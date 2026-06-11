@@ -24,7 +24,7 @@ func certManagerResources() []*metav1.APIResourceList {
 		{
 			GroupVersion: "cert-manager.io/v1",
 			APIResources: []metav1.APIResource{
-				{Name: "certificates", Kind: "Certificate", Namespaced: true, Verbs: metav1.Verbs{"list", "get", "watch"}},
+				{Name: "certificates", Kind: "Certificate", Namespaced: true, Verbs: metav1.Verbs{"list", "get", "watch"}, ShortNames: []string{"cert"}},
 				{Name: "certificates/status", Kind: "Certificate", Namespaced: true, Verbs: metav1.Verbs{"get"}},
 				{Name: "clusterissuers", Kind: "ClusterIssuer", Namespaced: false, Verbs: metav1.Verbs{"list", "get"}},
 				{Name: "challenges", Kind: "Challenge", Namespaced: true, Verbs: metav1.Verbs{"get"}},
@@ -67,12 +67,50 @@ func TestDiscoverResourcesFiltersAndScopes(t *testing.T) {
 	if !certificate.Namespaced || !certificate.Custom || certificate.APIVersion() != "cert-manager.io/v1" {
 		t.Errorf("Certificate descriptor = %+v, want namespaced custom cert-manager.io/v1", *certificate)
 	}
+	foundCertAlias := false
+	for _, alias := range certificate.Aliases {
+		if alias == "cert" {
+			foundCertAlias = true
+			break
+		}
+	}
+	if !foundCertAlias {
+		t.Errorf("Certificate aliases = %v, want discovery short name \"cert\"", certificate.Aliases)
+	}
 
 	if clusterIssuer == nil {
 		t.Fatal("cluster-scoped ClusterIssuer custom resource was not discovered")
 	}
 	if clusterIssuer.Namespaced {
 		t.Error("ClusterIssuer should be cluster-scoped")
+	}
+}
+
+func TestDiscoverResourcesMergesDiscoveryShortNamesForBuiltins(t *testing.T) {
+	t.Parallel()
+
+	typed := kubefake.NewClientset()
+	typed.Resources = []*metav1.APIResourceList{
+		{
+			GroupVersion: "v1",
+			APIResources: []metav1.APIResource{
+				{Name: "services", Kind: "Service", Namespaced: true, Verbs: metav1.Verbs{"list"}, ShortNames: []string{"svcx"}},
+			},
+		},
+	}
+
+	client := kube.NewClientForInterfaces(typed, nil)
+	resources, err := client.DiscoverResources()
+	if err != nil {
+		t.Fatalf("DiscoverResources() error = %v", err)
+	}
+
+	entry, err := kube.ResolveResource(resources, "svcx", "")
+	if err != nil {
+		t.Fatalf("ResolveResource() error = %v", err)
+	}
+	if entry.Kind != resource.ReferenceKindService {
+		t.Fatalf("resolved kind = %q, want %q", entry.Kind, resource.ReferenceKindService)
 	}
 }
 

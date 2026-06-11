@@ -37,6 +37,8 @@ These flags apply only to `klue why`.
 | `--lease-stale-multiplier` | — | `4` | Lease durations before a holder is considered stale |
 | `--no-namespace-scan` | — | `false` | Skip scanning unvisited namespace resources when graph traversal finds no issues |
 | `--no-fetch-logs` | — | `false` | Skip fetching container logs for unhealthy related pods |
+| `--fetch-crds` | — | `related` | Custom resource fetch scope: `all`, `related`, or `none` |
+| `--full-snapshot` | — | `false` | Fetch a full namespace snapshot instead of target-scoped prefetch |
 | `--log-tail-lines` | — | `100` | Trailing log lines to fetch per container |
 | `--debug` | — | `false` | Include debug metadata (candidate reasons, fetch stats, correlation/dedupe details) |
 | `--disable-rule` | — | — | Disable a diagnostic rule by ID (repeatable) |
@@ -88,6 +90,8 @@ Unknown rule IDs produce an error listing the invalid values.
 - Log fetching stays bounded (`--log-tail-lines`, candidate cap) and is focused
   on unhealthy containers related to the target, with selection reasons tracked
   in debug metadata.
+- Log fetching now runs in a second pass only when first-pass findings indicate
+  logs are likely to add signal (for example crash loops or probe failures).
 - Some pod findings (notably `pod/image-pull` and `pod/probe-failure`) combine
   event and log/status evidence to improve explanation quality and confidence.
 - Generic fallback findings (`builtin/warning-events`) are suppressed when the

@@ -195,3 +195,59 @@ func TestEngineDiagnose_SuppressesRedundantBuiltinWarningEvents(t *testing.T) {
 		t.Fatalf("Debug = %+v, want suppressed findings metadata", d.Debug)
 	}
 }
+
+func TestEngineDiagnose_PrefersUpstreamRelatedFindingOnTie(t *testing.T) {
+	t.Parallel()
+
+	target := resource.NewReference(resource.ReferenceKindService, "v1", "default", "web", "uid-svc")
+	pod := resource.NewReference(resource.ReferenceKindPod, "v1", "default", "web-pod", "uid-pod")
+
+	builder := graph.NewBuilder()
+	builder.AddNode(graph.Node{Ref: target, Status: resource.StatusDegraded})
+	builder.AddNode(graph.Node{Ref: pod, Status: resource.StatusDegraded})
+	builder.AddEdge(graph.Edge{
+		Kind: graph.EdgeSelectedBy,
+		From: graph.Node{Ref: target},
+		To:   graph.Node{Ref: pod},
+	})
+	g := builder.Build()
+
+	serviceSymptom := diagnose.Finding{
+		ID:         "service/no-endpoints",
+		Title:      "service symptom",
+		Severity:   diagnose.SeverityWarning,
+		Confidence: 0.5,
+		Resource:   target,
+		Evidence: []diagnose.Evidence{
+			diagnose.NewEvidence(target, diagnose.EvidenceStatus, "status", ""),
+		},
+	}
+	podCause := diagnose.Finding{
+		ID:         "pod/cause",
+		Title:      "pod cause",
+		Severity:   diagnose.SeverityWarning,
+		Confidence: 0.5,
+		Resource:   pod,
+		Evidence: []diagnose.Evidence{
+			diagnose.NewEvidence(pod, diagnose.EvidenceStatus, "status", ""),
+		},
+	}
+
+	engine := diagnose.NewEngine(
+		stubRule{
+			id:    "service",
+			kinds: []resource.Kind{resource.ReferenceKindService},
+			findings: []diagnose.Finding{
+				serviceSymptom,
+				podCause,
+			},
+		},
+	)
+	d := engine.Diagnose(diagnose.RuleContext{Graph: g, Options: diagnose.DefaultDiagnoseOptions()}, target)
+	if d.RootCause == nil {
+		t.Fatal("RootCause = nil, want pod-related finding")
+	}
+	if d.RootCause.ID != "pod/cause" {
+		t.Fatalf("RootCause.ID = %q, want %q", d.RootCause.ID, "pod/cause")
+	}
+}

@@ -121,7 +121,29 @@ func diagnoseWithClient(cmd *cobra.Command, client *kube.Client, resources []kub
 		defer cancel()
 	}
 
-	snapshot, err := client.FetchWithResources(ctx, namespace, resources)
+	fullSnapshot, err := cmd.Flags().GetBool(fullSnapshotFlag)
+	if err != nil {
+		return err
+	}
+	crdFetchModeRaw, err := cmd.Flags().GetString(fetchCRDsFlag)
+	if err != nil {
+		return err
+	}
+	crdFetchMode, err := kube.ParseCRDFetchMode(crdFetchModeRaw)
+	if err != nil {
+		return err
+	}
+	if fullSnapshot && !cmd.Flags().Changed(fetchCRDsFlag) {
+		crdFetchMode = kube.CRDFetchAll
+	}
+
+	snapshot, err := client.FetchSnapshot(ctx, namespace, kube.SnapshotFetchOptions{
+		Resources:      resources,
+		TargetResource: entry,
+		TargetName:     name,
+		FullSnapshot:   fullSnapshot,
+		CRDFetchMode:   crdFetchMode,
+	})
 	if err != nil {
 		return err
 	}
@@ -156,31 +178,6 @@ func diagnoseWithClient(cmd *cobra.Command, client *kube.Client, resources []kub
 			EventWindow: options.EventWindow.String(),
 		}
 	}
-	if options.FetchLogs {
-		candidates := evidence.SelectLogCandidates(resourceGraph, target, snapshot.Pods, eventIndex, options.MaxLogCandidates)
-		if debugInfo != nil {
-			debugInfo.LogCandidatesTotal = len(candidates)
-			debugInfo.LogCandidates = make([]diagnose.DebugLogCandidate, 0, len(candidates))
-			for _, candidate := range candidates {
-				debugInfo.LogCandidates = append(debugInfo.LogCandidates, diagnose.DebugLogCandidate{
-					Pod:       candidate.PodRef.Display(),
-					Container: candidate.Container,
-					Previous:  candidate.Previous,
-					Reason:    candidate.Reason,
-				})
-			}
-		}
-		logEntries := client.FetchPodLogs(ctx, candidates, options.LogTailLines)
-		logIndex = evidence.NewLogIndex(logEntries)
-		if debugInfo != nil {
-			debugInfo.LogEntriesFetched = len(logEntries)
-			for _, entry := range logEntries {
-				if entry.FetchError != "" {
-					debugInfo.LogFetchErrors++
-				}
-			}
-		}
-	}
 
 	onlyRules, err := cmd.Flags().GetStringArray(onlyRuleFlag)
 	if err != nil {
@@ -212,6 +209,42 @@ func diagnoseWithClient(cmd *cobra.Command, client *kube.Client, resources []kub
 		Logs:    logIndex,
 		Options: options,
 	}, target)
+
+	if options.FetchLogs {
+		candidates := evidence.SelectLogCandidates(resourceGraph, target, snapshot.Pods, eventIndex, options.MaxLogCandidates)
+		if debugInfo != nil {
+			debugInfo.LogCandidatesTotal = len(candidates)
+			debugInfo.LogCandidates = make([]diagnose.DebugLogCandidate, 0, len(candidates))
+			for _, candidate := range candidates {
+				debugInfo.LogCandidates = append(debugInfo.LogCandidates, diagnose.DebugLogCandidate{
+					Pod:       candidate.PodRef.Display(),
+					Container: candidate.Container,
+					Previous:  candidate.Previous,
+					Reason:    candidate.Reason,
+				})
+			}
+		}
+
+		if shouldFetchLogsForDiagnosis(result.Findings, len(candidates)) {
+			logEntries := client.FetchPodLogs(ctx, candidates, options.LogTailLines)
+			logIndex = evidence.NewLogIndex(logEntries)
+			result = engine.Diagnose(diagnose.RuleContext{
+				Graph:   resourceGraph,
+				Events:  eventIndex,
+				Logs:    logIndex,
+				Options: options,
+			}, target)
+
+			if debugInfo != nil {
+				debugInfo.LogEntriesFetched = len(logEntries)
+				for _, entry := range logEntries {
+					if entry.FetchError != "" {
+						debugInfo.LogFetchErrors++
+					}
+				}
+			}
+		}
+	}
 	if debugInfo != nil {
 		if result.Debug == nil {
 			result.Debug = debugInfo
@@ -231,6 +264,29 @@ func diagnoseWithClient(cmd *cobra.Command, client *kube.Client, resources []kub
 	}
 
 	return output.RenderDiagnosisFormat(cmd.OutOrStdout(), result, outputFormat)
+}
+
+func shouldFetchLogsForDiagnosis(findings []diagnose.Finding, candidateCount int) bool {
+	if candidateCount == 0 {
+		return false
+	}
+	if len(findings) == 0 {
+		return true
+	}
+
+	for _, finding := range findings {
+		switch finding.ID {
+		case "pod/crashloop",
+			"pod/probe-failure",
+			"pod/image-pull",
+			"pod/pending",
+			"pod/mount-failure",
+			"builtin/warning-events":
+			return true
+		}
+	}
+
+	return false
 }
 
 func diagnoseOptionsFromFlags(cmd *cobra.Command, namespace string) (diagnose.DiagnoseOptions, error) {

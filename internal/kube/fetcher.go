@@ -21,23 +21,66 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
+	"github.com/gabor-boros/klue/pkg/resource"
 )
 
 // Fetch retrieves all resources relevant to a diagnosis for the given
 // namespace. Cluster-scoped resources (Nodes, PersistentVolumes, StorageClasses)
 // are fetched in full. The first error encountered aborts the fetch.
 func (c *Client) Fetch(ctx context.Context, namespace string) (*ResourceSnapshot, error) {
-	return c.fetch(ctx, namespace, nil, false)
+	return c.fetch(ctx, namespace, nil, false, fetchPlan{
+		fullSnapshot: true,
+		crdFetchMode: CRDFetchAll,
+	})
 }
 
 // FetchWithResources fetches the diagnosis snapshot while reusing a pre-fetched
 // API resource catalog (for example the output of DiscoverResources). This
 // avoids a second custom-resource discovery call during dynamic fetch.
 func (c *Client) FetchWithResources(ctx context.Context, namespace string, resources []APIResource) (*ResourceSnapshot, error) {
-	return c.fetch(ctx, namespace, resources, true)
+	return c.fetch(ctx, namespace, resources, true, fetchPlan{
+		fullSnapshot: true,
+		crdFetchMode: CRDFetchAll,
+	})
 }
 
-func (c *Client) fetch(ctx context.Context, namespace string, resources []APIResource, providedResources bool) (*ResourceSnapshot, error) {
+type fetchPlan struct {
+	fullSnapshot   bool
+	crdFetchMode   CRDFetchMode
+	targetResource *APIResource
+	targetName     string
+}
+
+// FetchSnapshot fetches a diagnosis snapshot with configurable scoping and CRD
+// listing behavior.
+func (c *Client) FetchSnapshot(ctx context.Context, namespace string, options SnapshotFetchOptions) (*ResourceSnapshot, error) {
+	mode, err := ParseCRDFetchMode(string(options.CRDFetchMode))
+	if err != nil {
+		return nil, err
+	}
+
+	providedResources := len(options.Resources) > 0
+	plan := fetchPlan{
+		fullSnapshot: options.FullSnapshot,
+		crdFetchMode: mode,
+		targetName:   options.TargetName,
+	}
+
+	if options.TargetName != "" && options.TargetResource.Kind != "" {
+		plan.targetResource = &options.TargetResource
+	}
+
+	if !plan.fullSnapshot && plan.targetResource != nil {
+		if err := c.ensureTargetExists(ctx, namespace, *plan.targetResource, plan.targetName); err != nil {
+			return nil, err
+		}
+	}
+
+	return c.fetch(ctx, namespace, options.Resources, providedResources, plan)
+}
+
+func (c *Client) fetch(ctx context.Context, namespace string, resources []APIResource, providedResources bool, plan fetchPlan) (*ResourceSnapshot, error) {
 	snapshot := &ResourceSnapshot{Namespace: namespace}
 
 	if err := c.fetchCoreTyped(ctx, namespace, snapshot); err != nil {
@@ -48,11 +91,41 @@ func (c *Client) fetch(ctx context.Context, namespace string, resources []APIRes
 		return nil, err
 	}
 
-	if err := c.fetchDynamic(ctx, namespace, resources, providedResources, snapshot); err != nil {
+	if err := c.fetchDynamic(ctx, namespace, resources, providedResources, plan, snapshot); err != nil {
 		return nil, err
 	}
 
 	return snapshot, nil
+}
+
+func (c *Client) ensureTargetExists(ctx context.Context, namespace string, entry APIResource, name string) error {
+	if c.dynamic == nil {
+		return nil
+	}
+
+	gvr := entry.GroupVersionResource()
+	var err error
+	if entry.Namespaced {
+		_, err = c.dynamic.Resource(gvr).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
+	} else {
+		_, err = c.dynamic.Resource(gvr).Get(ctx, name, metav1.GetOptions{})
+	}
+	if err == nil {
+		return nil
+	}
+	if apierrors.IsNotFound(err) {
+		targetNamespace := namespace
+		if !entry.Namespaced {
+			targetNamespace = ""
+		}
+		target := resource.NewReference(entry.Kind, entry.APIVersion(), targetNamespace, name, "")
+		if entry.Namespaced {
+			return fmt.Errorf("%s not found in namespace %q", target.Display(), namespace)
+		}
+		return fmt.Errorf("%s not found", target.Display())
+	}
+
+	return fmt.Errorf("get %s %q: %w", entry.Resource, name, err)
 }
 
 type listJob struct {
@@ -435,7 +508,7 @@ func (c *Client) fetchExtendedTyped(ctx context.Context, namespace string, snaps
 // the cluster. Per-resource list failures (no permission, resource not served
 // by the API server) are tolerated so the diagnosis can proceed with whatever
 // could be read.
-func (c *Client) fetchDynamic(ctx context.Context, namespace string, resources []APIResource, providedResources bool, snapshot *ResourceSnapshot) error {
+func (c *Client) fetchDynamic(ctx context.Context, namespace string, resources []APIResource, providedResources bool, plan fetchPlan, snapshot *ResourceSnapshot) error {
 	if c.dynamic == nil {
 		return nil
 	}
@@ -448,7 +521,7 @@ func (c *Client) fetchDynamic(ctx context.Context, namespace string, resources [
 		entries = append(entries, entry)
 	}
 
-	customEntries := c.customResourceEntries(resources, providedResources)
+	customEntries := c.customResourceEntries(resources, providedResources, plan.crdFetchMode, plan.targetResource)
 	entries = append(entries, customEntries...)
 
 	dynamicObjects, err := c.listDynamicEntries(ctx, namespace, entries)
@@ -460,22 +533,72 @@ func (c *Client) fetchDynamic(ctx context.Context, namespace string, resources [
 	return nil
 }
 
-func (c *Client) customResourceEntries(resources []APIResource, providedResources bool) []APIResource {
+func (c *Client) customResourceEntries(resources []APIResource, providedResources bool, mode CRDFetchMode, target *APIResource) []APIResource {
+	if mode == CRDFetchNone {
+		return nil
+	}
+
 	var customs []APIResource
 	if providedResources {
 		customs = customEntries(resources)
+	} else {
+		discovered, err := discoverCustomResources(c.clientset.Discovery())
+		if err != nil {
+			// Discovery problems must not abort a diagnosis; built-in resources
+			// remain useful on their own.
+			return nil
+		}
+		customs = discovered
+	}
+
+	if mode == CRDFetchAll {
 		sortAPIResources(customs)
 		return customs
 	}
 
-	discovered, err := discoverCustomResources(c.clientset.Discovery())
-	if err != nil {
-		// Discovery problems must not abort a diagnosis; built-in resources
-		// remain useful on their own.
+	customs = filterRelatedCustomEntries(customs, target)
+	sortAPIResources(customs)
+	return customs
+}
+
+func filterRelatedCustomEntries(entries []APIResource, target *APIResource) []APIResource {
+	if len(entries) == 0 || target == nil {
 		return nil
 	}
 
-	return discovered
+	relatedKinds := relatedCustomKinds(*target)
+	out := make([]APIResource, 0, len(entries))
+	seen := make(map[string]struct{})
+	for i := range entries {
+		entry := entries[i]
+		if target.Custom && entry.Group == target.Group {
+			key := entry.Group + "/" + entry.Version + "/" + entry.Resource
+			if _, ok := seen[key]; !ok {
+				seen[key] = struct{}{}
+				out = append(out, entry)
+			}
+			continue
+		}
+		if _, ok := relatedKinds[entry.Kind]; !ok {
+			continue
+		}
+		key := entry.Group + "/" + entry.Version + "/" + entry.Resource
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, entry)
+	}
+
+	return out
+}
+
+func relatedCustomKinds(target APIResource) map[resource.Kind]struct{} {
+	kinds := make(map[resource.Kind]struct{})
+	if target.Custom {
+		kinds[target.Kind] = struct{}{}
+	}
+	return kinds
 }
 
 func customEntries(resources []APIResource) []APIResource {
