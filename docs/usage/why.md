@@ -68,7 +68,7 @@ sequenceDiagram
   klue->>klue: Build resource graph
   klue->>API: Fetch container logs (unhealthy related pods)
   klue->>klue: Run diagnostic rules
-  klue-->>User: Diagnosis (text or JSON)
+  klue-->>User: Diagnosis (text, JSON, or Markdown)
 ```
 
 1. **Connect** — load kubeconfig / in-cluster credentials (see

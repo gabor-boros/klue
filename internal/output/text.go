@@ -4,17 +4,13 @@ package output
 import (
 	"fmt"
 	"io"
-	"sort"
 	"strings"
 
 	"github.com/gabor-boros/klue/internal/diagnose"
-	"github.com/gabor-boros/klue/internal/evidence"
-	"github.com/gabor-boros/klue/internal/graph"
-	"github.com/gabor-boros/klue/pkg/resource"
 )
 
-// RenderDiagnosis writes a diagnosis to w as plain text.
-func RenderDiagnosis(w io.Writer, d diagnose.Diagnosis) error {
+// RenderDiagnosisText writes a diagnosis to w as plain text.
+func RenderDiagnosisText(w io.Writer, d diagnose.Diagnosis) error {
 	var b strings.Builder
 
 	fmt.Fprintf(&b, "Target:  %s\n", d.Target.Display())
@@ -30,7 +26,7 @@ func RenderDiagnosis(w io.Writer, d diagnose.Diagnosis) error {
 	if len(d.Findings) > 0 {
 		b.WriteString("\nFindings:\n")
 		for i := range d.Findings {
-			writeFinding(&b, &d.Findings[i])
+			writeFindingText(&b, &d.Findings[i])
 		}
 	}
 
@@ -44,7 +40,7 @@ func RenderDiagnosis(w io.Writer, d diagnose.Diagnosis) error {
 	if len(d.Suggestions) > 0 {
 		b.WriteString("\nSuggestions:\n")
 		for _, suggestion := range d.Suggestions {
-			writeSuggestion(&b, suggestion)
+			writeSuggestionText(&b, suggestion)
 		}
 	}
 
@@ -82,7 +78,7 @@ func RenderDiagnosis(w io.Writer, d diagnose.Diagnosis) error {
 	return err
 }
 
-func writeEvidence(b *strings.Builder, ev diagnose.Evidence) {
+func writeEvidenceText(b *strings.Builder, ev diagnose.Evidence) {
 	if ev.Message == "" && ev.Raw == "" {
 		return
 	}
@@ -102,32 +98,17 @@ func writeEvidence(b *strings.Builder, ev diagnose.Evidence) {
 	}
 }
 
-func splitEvidenceLines(raw string) []string {
-	if raw == "" {
-		return nil
-	}
-	lines := strings.Split(raw, "\n")
-	out := make([]string, 0, len(lines))
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line != "" {
-			out = append(out, line)
-		}
-	}
-	return out
-}
-
-func writeFinding(b *strings.Builder, finding *diagnose.Finding) {
+func writeFindingText(b *strings.Builder, finding *diagnose.Finding) {
 	fmt.Fprintf(b, "  - [%s] %s (confidence %.0f%%)\n", finding.Severity, finding.Title, finding.Confidence*100)
 	if finding.Explanation != "" {
 		fmt.Fprintf(b, "      %s\n", finding.Explanation)
 	}
 	for _, ev := range finding.Evidence {
-		writeEvidence(b, ev)
+		writeEvidenceText(b, ev)
 	}
 }
 
-func writeSuggestion(b *strings.Builder, suggestion diagnose.Suggestion) {
+func writeSuggestionText(b *strings.Builder, suggestion diagnose.Suggestion) {
 	fmt.Fprintf(b, "  - %s\n", suggestion.Title)
 	if suggestion.Command != "" {
 		fmt.Fprintf(b, "      $ %s\n", suggestion.Command)
@@ -135,57 +116,4 @@ func writeSuggestion(b *strings.Builder, suggestion diagnose.Suggestion) {
 	if suggestion.Explanation != "" {
 		fmt.Fprintf(b, "      %s\n", suggestion.Explanation)
 	}
-}
-
-// RenderGraph writes the target node and its directly related nodes, grouped by
-// edge kind, to w. It is intended for debugging the resource graph.
-func RenderGraph(w io.Writer, g *graph.Graph, idx *evidence.EventIndex, target resource.Reference) error {
-	node, ok := g.FindByRef(target)
-	if !ok {
-		return fmt.Errorf("%s not found in graph", target.Display())
-	}
-
-	var b strings.Builder
-	fmt.Fprintf(&b, "%s (%s)\n", node.Ref.Display(), statusOrDash(string(node.Status)))
-
-	edges := g.GetOutboundEdges(node)
-	byKind := make(map[string][]string)
-	for _, edge := range edges {
-		byKind[string(edge.Kind)] = append(byKind[string(edge.Kind)], edge.To.Ref.Display())
-	}
-
-	kinds := make([]string, 0, len(byKind))
-	for kind := range byKind {
-		kinds = append(kinds, kind)
-	}
-	sort.Strings(kinds)
-
-	for _, kind := range kinds {
-		targets := byKind[kind]
-		sort.Strings(targets)
-		fmt.Fprintf(&b, "  %s:\n", kind)
-		for _, t := range targets {
-			fmt.Fprintf(&b, "    - %s\n", t)
-		}
-	}
-
-	if idx != nil {
-		warnings := idx.For(target).Warnings()
-		if len(warnings) > 0 {
-			b.WriteString("  warnings:\n")
-			for _, event := range warnings {
-				fmt.Fprintf(&b, "    - %s: %s\n", event.Reason, event.Message)
-			}
-		}
-	}
-
-	_, err := io.WriteString(w, b.String())
-	return err
-}
-
-func statusOrDash(status string) string {
-	if status == "" {
-		return "-"
-	}
-	return status
 }
