@@ -22,6 +22,14 @@ type resourceDiscoverer interface {
 	ServerGroupsAndResources() ([]*metav1.APIGroup, []*metav1.APIResourceList, error)
 }
 
+func discoverServerResources(d resourceDiscoverer) ([]*metav1.APIGroup, []*metav1.APIResourceList, error) {
+	groups, lists, err := d.ServerGroupsAndResources()
+	if err != nil && !discovery.IsGroupDiscoveryFailedError(err) {
+		return nil, nil, fmt.Errorf("discover server resources: %w", err)
+	}
+	return groups, lists, nil
+}
+
 // discoverCustomResources returns descriptors for every listable custom
 // resource served by the cluster. Built-in Kubernetes groups are skipped; only
 // custom (CRD-backed) groups are returned so they can be fetched dynamically.
@@ -30,11 +38,15 @@ type resourceDiscoverer interface {
 // failing to load, common when an aggregated API server is unhealthy) is
 // tolerated and the resources that did load are still returned.
 func discoverCustomResources(d resourceDiscoverer) ([]APIResource, error) {
-	groups, lists, err := d.ServerGroupsAndResources()
-	if err != nil && !discovery.IsGroupDiscoveryFailedError(err) {
-		return nil, fmt.Errorf("discover server resources: %w", err)
+	groups, lists, err := discoverServerResources(d)
+	if err != nil {
+		return nil, err
 	}
 
+	return customResourcesFromLists(groups, lists), nil
+}
+
+func customResourcesFromLists(groups []*metav1.APIGroup, lists []*metav1.APIResourceList) []APIResource {
 	preferred := preferredGroupVersions(groups)
 
 	var out []APIResource
@@ -80,13 +92,14 @@ func discoverCustomResources(d resourceDiscoverer) ([]APIResource, error) {
 				Kind:       resource.Kind(apiResource.Kind),
 				Namespaced: apiResource.Namespaced,
 				Typed:      false,
+				Aliases:    mergeAliases(nil, apiResource.ShortNames),
 				Custom:     true,
 			})
 		}
 	}
 
 	sortAPIResources(out)
-	return out, nil
+	return out
 }
 
 // preferredGroupVersions maps each API group to its server-preferred version.
@@ -134,12 +147,15 @@ func (c *Client) DiscoverResources() ([]APIResource, error) {
 		return catalog, nil
 	}
 
-	customs, err := discoverCustomResources(c.clientset.Discovery())
+	groups, lists, err := discoverServerResources(c.clientset.Discovery())
 	if err != nil {
 		return catalog, err
 	}
 
-	return append(catalog, customs...), nil
+	customs := customResourcesFromLists(groups, lists)
+	catalog = append(catalog, customs...)
+	mergeDiscoveryShortNames(catalog, lists)
+	return catalog, nil
 }
 
 // ResolveResource resolves a CLI token (a kind, plural resource name or alias)
@@ -189,6 +205,69 @@ func resourceMatchesToken(entry APIResource, token string) bool {
 		}
 	}
 	return false
+}
+
+func mergeDiscoveryShortNames(resources []APIResource, lists []*metav1.APIResourceList) {
+	index := make(map[string]int, len(resources))
+	for i := range resources {
+		entry := resources[i]
+		key := entry.Group + "/" + entry.Version + "/" + entry.Resource
+		index[key] = i
+	}
+
+	for _, list := range lists {
+		if list == nil {
+			continue
+		}
+		gv, err := schema.ParseGroupVersion(list.GroupVersion)
+		if err != nil {
+			continue
+		}
+		for _, apiResource := range list.APIResources {
+			if IsSubresource(apiResource.Name) {
+				continue
+			}
+			key := gv.Group + "/" + gv.Version + "/" + apiResource.Name
+			i, ok := index[key]
+			if !ok {
+				continue
+			}
+			resources[i].Aliases = mergeAliases(resources[i].Aliases, apiResource.ShortNames)
+		}
+	}
+}
+
+func mergeAliases(existing []string, extras []string) []string {
+	if len(extras) == 0 {
+		return existing
+	}
+
+	seen := make(map[string]struct{}, len(existing)+len(extras))
+	out := make([]string, 0, len(existing)+len(extras))
+	for _, alias := range existing {
+		normalized := strings.ToLower(strings.TrimSpace(alias))
+		if normalized == "" {
+			continue
+		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		out = append(out, normalized)
+	}
+	for _, alias := range extras {
+		normalized := strings.ToLower(strings.TrimSpace(alias))
+		if normalized == "" {
+			continue
+		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		out = append(out, normalized)
+	}
+
+	return out
 }
 
 // ambiguousResourceError builds an error that lists the apiVersions a token

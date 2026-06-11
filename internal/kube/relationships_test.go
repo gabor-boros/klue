@@ -169,10 +169,10 @@ func TestDynamicRelationshipsCertificate(t *testing.T) {
 
 	secretRel, ok := findRelationship(rels, resource.ReferenceKindSecret, "web-tls")
 	if !ok {
-		t.Fatal("expected certificate to produce secret web-tls")
+		t.Fatal("expected certificate to reference secret web-tls")
 	}
-	if secretRel.EdgeKind != graph.EdgeProduces {
-		t.Errorf("secret edge kind = %s, want %s", secretRel.EdgeKind, graph.EdgeProduces)
+	if secretRel.EdgeKind != graph.EdgeUsesSecret {
+		t.Errorf("secret edge kind = %s, want %s", secretRel.EdgeKind, graph.EdgeUsesSecret)
 	}
 
 	if issuerRel, ok := findRelationship(rels, resource.Kind("ClusterIssuer"), "letsencrypt"); !ok || issuerRel.EdgeKind != graph.EdgeReferences {

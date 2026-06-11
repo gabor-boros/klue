@@ -18,6 +18,8 @@ const (
 	leaseStaleMultiplierFlag = "lease-stale-multiplier"
 	noNamespaceScanFlag      = "no-namespace-scan"
 	noFetchLogsFlag          = "no-fetch-logs"
+	fetchCRDsFlag            = "fetch-crds"
+	fullSnapshotFlag         = "full-snapshot"
 	logTailLinesFlag         = "log-tail-lines"
 	debugFlag                = "debug"
 	disableRuleFlag          = "disable-rule"
@@ -39,6 +41,8 @@ func registerWhyFlags(cmd *cobra.Command) {
 	cmd.Flags().Int(leaseStaleMultiplierFlag, diagnose.DefaultLeaseStaleMultiplier, "How many lease durations may elapse before a lease holder is considered stale")
 	cmd.Flags().Bool(noNamespaceScanFlag, false, "Do not scan unvisited resources in the target namespace when graph traversal finds no issues")
 	cmd.Flags().Bool(noFetchLogsFlag, false, "Do not fetch container logs for unhealthy related pods")
+	cmd.Flags().String(fetchCRDsFlag, kube.DefaultCRDFetchMode(), "Custom resource fetch scope: all, related, or none")
+	cmd.Flags().Bool(fullSnapshotFlag, false, "Fetch a full namespace snapshot instead of target-scoped prefetch")
 	cmd.Flags().Int64(logTailLinesFlag, diagnose.DefaultLogTailLines, "Maximum number of trailing log lines to fetch per container")
 	cmd.Flags().Bool(debugFlag, false, "Include debug metadata about evidence collection and rule correlation")
 	cmd.Flags().StringArray(disableRuleFlag, nil, "Disable a diagnostic rule by ID (repeatable)")

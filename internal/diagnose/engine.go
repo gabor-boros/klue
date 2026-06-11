@@ -77,7 +77,8 @@ func (e *Engine) Diagnose(rctx RuleContext, target resource.Reference) Diagnosis
 	correlated := annotateCorroboration(findings)
 	var suppressed int
 	findings, suppressed = suppressRedundantBuiltinFindings(findings)
-	sortFindings(findings)
+	rootCauseBias := rankRootCauseBias(rctx.Graph, targetNode, findings)
+	sortFindings(findings, rootCauseBias)
 
 	diagnosis.Findings = findings
 	diagnosis.Chain = buildChain(chainNodes, findings)
@@ -243,7 +244,7 @@ func severityRank(severity Severity) int {
 
 // sortFindings orders findings by severity, then confidence, then ID so the
 // most likely root cause is first and the ordering is deterministic.
-func sortFindings(findings []Finding) {
+func sortFindings(findings []Finding, rootCauseBias map[string]int) {
 	sort.SliceStable(findings, func(i, j int) bool {
 		ri, rj := severityRank(findings[i].Severity), severityRank(findings[j].Severity)
 		if ri != rj {
@@ -252,11 +253,82 @@ func sortFindings(findings []Finding) {
 		if findings[i].Corroboration != findings[j].Corroboration {
 			return findings[i].Corroboration > findings[j].Corroboration
 		}
+		bi := rootCauseBias[findings[i].Resource.Key()]
+		bj := rootCauseBias[findings[j].Resource.Key()]
+		if bi != bj {
+			return bi > bj
+		}
 		if findings[i].Confidence != findings[j].Confidence {
 			return findings[i].Confidence > findings[j].Confidence
 		}
 		return findings[i].ID < findings[j].ID
 	})
+}
+
+func rankRootCauseBias(g *graph.Graph, target graph.Node, findings []Finding) map[string]int {
+	bias := make(map[string]int, len(findings))
+	if g == nil || len(findings) == 0 {
+		return bias
+	}
+
+	outboundDistance := bfsDistance(g, target, true)
+	inboundDistance := bfsDistance(g, target, false)
+	for i := range findings {
+		key := findings[i].Resource.Key()
+		score := 0
+		if d, ok := outboundDistance[key]; ok {
+			if d > 0 {
+				score += 4
+				if d <= 3 {
+					score += 4 - d
+				}
+			}
+		}
+		if d, ok := inboundDistance[key]; ok {
+			score++
+			if d <= 2 {
+				score += 2 - d
+			}
+		}
+		bias[key] = score
+	}
+
+	return bias
+}
+
+func bfsDistance(g *graph.Graph, start graph.Node, outbound bool) map[string]int {
+	dist := map[string]int{start.Ref.Key(): 0}
+	frontier := []graph.Node{start}
+
+	for len(frontier) > 0 {
+		next := make([]graph.Node, 0)
+		for i := range frontier {
+			node := frontier[i]
+			currentDistance := dist[node.Ref.Key()]
+
+			var neighbors []graph.Node
+			if outbound {
+				neighbors = g.GetOutboundNodes(node)
+			} else {
+				neighbors = g.GetInboundNodes(node)
+			}
+			sort.Slice(neighbors, func(i, j int) bool {
+				return neighbors[i].Ref.Key() < neighbors[j].Ref.Key()
+			})
+
+			for _, neighbor := range neighbors {
+				key := neighbor.Ref.Key()
+				if _, seen := dist[key]; seen {
+					continue
+				}
+				dist[key] = currentDistance + 1
+				next = append(next, neighbor)
+			}
+		}
+		frontier = next
+	}
+
+	return dist
 }
 
 func annotateCorroboration(findings []Finding) int {

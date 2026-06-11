@@ -76,9 +76,13 @@ sequenceDiagram
 2. **Discover** — enumerate served API resources (built-ins + CRDs).
 3. **Resolve** — map `<resource>` to a single API resource descriptor.
 4. **Fetch** — list objects in parallel to build a namespace snapshot and
-   resource graph.
-5. **Collect logs** — for unhealthy pods related to the target, fetch trailing
-   container logs (enabled by default; see [Flags](flags.md)).
+   resource graph. By default, klue prefetches the target first and limits CRD
+   lists to related kinds; use `--full-snapshot` to force legacy full-snapshot
+   behavior and `--fetch-crds=all|related|none` to tune CRD listing scope.
+5. **Collect logs (conditional second pass)** — for unhealthy pods related to
+   the target, fetch trailing container logs only when first-pass findings
+   suggest logs are likely to add signal (enabled by default; see
+   [Flags](flags.md)).
 6. **Diagnose** — run selected rules against the graph, event index, and log
    excerpts.
 7. **Render** — output text (default) or JSON (`-o json`).
@@ -89,10 +93,11 @@ By default, klue fetches the last 100 lines from containers on unhealthy pods
 related to the diagnosis target (for example pods in `CrashLoopBackOff` owned by
 a Deployment). Candidate containers are selected from status and warning-event
 signals (for example crash loops, probe failures, and create/config/image-pull
-wait states when warning events corroborate them). Log excerpts are ranked,
-matched against common failure patterns (panic, OOM, connection refused, DNS
-failures, missing config, permission denied), and attached as evidence on
-findings.
+wait states when warning events corroborate them). klue first runs diagnosis
+without logs, then fetches logs only when the first pass indicates they are
+likely to improve the diagnosis. Log excerpts are matched against common failure
+patterns (panic, OOM, connection refused, DNS failures, missing config,
+permission denied), and attached as evidence on findings.
 
 ## Event and log correlation
 

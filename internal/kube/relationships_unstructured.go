@@ -13,11 +13,10 @@ import (
 )
 
 // DynamicRelationships extracts reusable references from unstructured objects.
-// It combines conservative generic patterns with a small data-driven registry
-// for controller-specific producer/reference semantics.
+// It relies on conservative generic patterns so custom-resource handling stays
+// controller-agnostic.
 func DynamicRelationships(entry APIResource, obj *unstructured.Unstructured, resolver RelationshipScopeResolver) []Relationship {
 	relationships := make([]Relationship, 0, 8)
-	relationships = append(relationships, certManagerRelationships(entry, obj, resolver)...)
 	relationships = append(relationships, genericSpecRelationships(entry, obj, resolver)...)
 
 	if len(relationships) == 0 {
@@ -26,58 +25,6 @@ func DynamicRelationships(entry APIResource, obj *unstructured.Unstructured, res
 
 	sortRelationships(relationships)
 	return dedupeRelationships(relationships)
-}
-
-func certManagerRelationships(entry APIResource, obj *unstructured.Unstructured, resolver RelationshipScopeResolver) []Relationship {
-	if entry.APIVersion() != "cert-manager.io/v1" {
-		return nil
-	}
-
-	relationships := make([]Relationship, 0, 3)
-
-	if entry.Kind == resource.Kind("Certificate") {
-		if name, found, err := unstructured.NestedString(obj.Object, "spec", "secretName"); err == nil && found && name != "" {
-			relationships = append(relationships, Relationship{
-				EdgeKind: graph.EdgeProduces,
-				Target: resource.NewReference(
-					resource.ReferenceKindSecret,
-					apiVersionCore,
-					namespaceForTarget(resource.ReferenceKindSecret, apiVersionCore, obj.GetNamespace(), "", resolver),
-					name,
-					"",
-				),
-				Reason: "secretName",
-				Path:   "spec.secretName",
-				Role:   RelationshipRoleProduces,
-			})
-		}
-
-		if ref, found, err := unstructured.NestedMap(obj.Object, "spec", "issuerRef"); err == nil && found {
-			name, _ := ref["name"].(string)
-			if name != "" {
-				kind := resource.Kind("Issuer")
-				if rawKind, ok := ref["kind"].(string); ok && rawKind != "" {
-					kind = resource.Kind(rawKind)
-				}
-				group := "cert-manager.io"
-				if rawGroup, ok := ref["group"].(string); ok && rawGroup != "" {
-					group = rawGroup
-				}
-				targetAPIVersion := fmt.Sprintf("%s/%s", group, entry.Version)
-				targetNamespace := namespaceForTarget(kind, targetAPIVersion, obj.GetNamespace(), "", resolver)
-
-				relationships = append(relationships, Relationship{
-					EdgeKind: graph.EdgeReferences,
-					Target:   resource.NewReference(kind, targetAPIVersion, targetNamespace, name, ""),
-					Reason:   "issuerRef",
-					Path:     "spec.issuerRef",
-					Role:     RelationshipRoleReferences,
-				})
-			}
-		}
-	}
-
-	return relationships
 }
 
 func genericSpecRelationships(entry APIResource, obj *unstructured.Unstructured, resolver RelationshipScopeResolver) []Relationship {
@@ -92,11 +39,6 @@ func genericSpecRelationships(entry APIResource, obj *unstructured.Unstructured,
 		if kind != "" {
 			name, ok := value.(string)
 			if ok && name != "" {
-				// Certificate.spec.secretName represents producer semantics and is
-				// handled by cert-manager-specific extraction.
-				if entry.APIVersion() == "cert-manager.io/v1" && entry.Kind == resource.Kind("Certificate") && path == "spec.secretName" {
-					return
-				}
 				relationships = append(relationships, Relationship{
 					EdgeKind: edgeForTarget(kind),
 					Target: resource.NewReference(

@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"testing"
+
+	"github.com/gabor-boros/klue/internal/diagnose"
 )
 
 func TestNewDiagnoseCommand(t *testing.T) {
@@ -20,6 +22,8 @@ func TestNewDiagnoseCommand(t *testing.T) {
 		terminatingGraceFlag,
 		leaseStaleMultiplierFlag,
 		noNamespaceScanFlag,
+		fetchCRDsFlag,
+		fullSnapshotFlag,
 		debugFlag,
 		disableRuleFlag,
 		onlyRuleFlag,
@@ -85,5 +89,55 @@ func TestDiagnoseOptionsFromFlags_Debug(t *testing.T) {
 	}
 	if !options.Debug {
 		t.Fatalf("options.Debug = false, want true")
+	}
+}
+
+func TestShouldFetchLogsForDiagnosis(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		findings   []diagnose.Finding
+		candidates int
+		want       bool
+	}{
+		{
+			name:       "no candidates disables log fetch",
+			findings:   nil,
+			candidates: 0,
+			want:       false,
+		},
+		{
+			name:       "no findings but candidates enables log fetch",
+			findings:   nil,
+			candidates: 1,
+			want:       true,
+		},
+		{
+			name: "crashloop finding enables log fetch",
+			findings: []diagnose.Finding{
+				{ID: "pod/crashloop"},
+			},
+			candidates: 1,
+			want:       true,
+		},
+		{
+			name: "non pod finding skips log fetch",
+			findings: []diagnose.Finding{
+				{ID: "service/selector-mismatch"},
+			},
+			candidates: 2,
+			want:       false,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := shouldFetchLogsForDiagnosis(tt.findings, tt.candidates); got != tt.want {
+				t.Fatalf("shouldFetchLogsForDiagnosis() = %t, want %t", got, tt.want)
+			}
+		})
 	}
 }
