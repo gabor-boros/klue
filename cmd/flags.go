@@ -43,5 +43,5 @@ func registerWhyFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(debugFlag, false, "Include debug metadata about evidence collection and rule correlation")
 	cmd.Flags().StringArray(disableRuleFlag, nil, "Disable a diagnostic rule by ID (repeatable)")
 	cmd.Flags().StringArray(onlyRuleFlag, nil, "Run only the listed diagnostic rule IDs (repeatable)")
-	cmd.Flags().StringP(outputFlag, "o", "text", "Output format (text or json)")
+	cmd.Flags().StringP(outputFlag, "o", "text", "Output format (text/json/markdown)")
 }

@@ -41,7 +41,7 @@ These flags apply only to `klue why`.
 | `--debug` | — | `false` | Include debug metadata (candidate reasons, fetch stats, correlation/dedupe details) |
 | `--disable-rule` | — | — | Disable a diagnostic rule by ID (repeatable) |
 | `--only-rule` | — | — | Run only the listed rule IDs (repeatable) |
-| `--output` | `-o` | `text` | Output format: `text` or `json` |
+| `--output` | `-o` | `text` | Output format: `text`, `json`, or `markdown` |
 
 ### Duration values
 

@@ -9,7 +9,7 @@ import (
 	"github.com/gabor-boros/klue/pkg/resource"
 )
 
-func TestRenderDiagnosis(t *testing.T) {
+func TestRenderDiagnosisText(t *testing.T) {
 	t.Parallel()
 
 	target := resource.NewReference(resource.ReferenceKindPod, "v1", "default", "web", "")
@@ -33,8 +33,8 @@ func TestRenderDiagnosis(t *testing.T) {
 	}
 
 	var b strings.Builder
-	if err := output.RenderDiagnosis(&b, d); err != nil {
-		t.Fatalf("RenderDiagnosis() error = %v", err)
+	if err := output.RenderDiagnosisText(&b, d); err != nil {
+		t.Fatalf("RenderDiagnosisText() error = %v", err)
 	}
 
 	out := b.String()
@@ -49,12 +49,12 @@ func TestRenderDiagnosis(t *testing.T) {
 	}
 
 	var logBuilder strings.Builder
-	if err := output.RenderDiagnosis(&logBuilder, diagnose.Diagnosis{
+	if err := output.RenderDiagnosisText(&logBuilder, diagnose.Diagnosis{
 		Target:   target,
 		Summary:  logFinding.Title,
 		Findings: []diagnose.Finding{logFinding},
 	}); err != nil {
-		t.Fatalf("RenderDiagnosis() log evidence error = %v", err)
+		t.Fatalf("RenderDiagnosisText() log evidence error = %v", err)
 	}
 	if !strings.Contains(logBuilder.String(), "log: panic: boom") {
 		t.Fatalf("log evidence output missing log line:\n%s", logBuilder.String())
@@ -93,8 +93,8 @@ func TestRenderDiagnosisWithDebugSection(t *testing.T) {
 	}
 
 	var b strings.Builder
-	if err := output.RenderDiagnosis(&b, d); err != nil {
-		t.Fatalf("RenderDiagnosis() error = %v", err)
+	if err := output.RenderDiagnosisText(&b, d); err != nil {
+		t.Fatalf("RenderDiagnosisText() error = %v", err)
 	}
 
 	out := b.String()
