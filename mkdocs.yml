@@ -76,6 +76,16 @@ nav:
       - Commands: usage/commands.md
       - Flags: usage/flags.md
       - why: usage/why.md
+  - Rules:
+      - Overview: rules/index.md
+      - Builtin: rules/builtin.md
+      - Workloads: rules/workloads.md
+      - Batch: rules/batch.md
+      - Node: rules/node.md
+      - Networking: rules/networking.md
+      - Storage: rules/storage.md
+      - Reliability: rules/reliability.md
+      - Security: rules/security.md
   - Development:
       - Overview: development/index.md
       - Releasing: development/releasing.md
